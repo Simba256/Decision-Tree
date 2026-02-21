@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Career Decision Tree v2 - Database Driven</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    body { margin: 0; padding: 0; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useCallback, useEffect } = React;
+
+    // API Client
+    const API_BASE_URL = 'http://localhost:5000/api';
+
+    async function fetchPrograms(filters = {}) {
+      const params = new URLSearchParams(filters);
+      const response = await fetch(`${API_BASE_URL}/programs?${params}`);
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
+      const data = await response.json();
+      return data.programs;
+    }
+
+    async function checkHealth() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/health`);
+        if (!response.ok) return false;
+        const data = await response.json();
+        return data.status === 'ok';
+      } catch (error) {
+        return false;
+      }
+    }
+
+    // Tree Builder
+    function buildTree(programs) {
+      const nodes = {};
+
+      function groupBy(array, key) {
+        return array.reduce((result, item) => {
+          const group = item[key];
+          if (!result[group]) result[group] = [];
+          result[group].push(item);
+          return result;
+        }, {});
+      }
+
+      function makeId(str) {
+        return str.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      }
+
+      function truncate(str, maxLen) {
+        if (!str) return '';
+        return str.length > maxLen ? str.substring(0, maxLen - 3) + '...' : str;
+      }
+
+      const getFieldEmoji = (field) => ({ 'AI/ML': '🤖', 'CS/SWE': '💻', 'DS': '📊', 'Quant/FE': '💰' }[field] || '🎓');
+      const getFieldColor = (field) => ({ 'AI/ML': '#00ff9f', 'CS/SWE': '#00e5ff', 'DS': '#a29bfe', 'Quant/FE': '#fdcb6e' }[field] || '#636e72');
+      const getProb = (tier) => ({ tier1_free_europe: 0.55, tier2_elite_us: 0.10, tier3_midtier_global: 0.40, tier4_asia_regional: 0.45 }[tier] || 0.50);
+
+      nodes.root = {
+        id: "root",
+        phase: -1,
+        label: "YOU TODAY\\nYear 0",
+        salary: "220K PKR/mo\\nL3 Embedded AI",
+        prob: 1.0,
+        color: "#00ff9f",
+        children: ["masters_root", "p1_promoted", "p1_notpromoted_stay", "p1_switch_local"]
+      };
+
+      const tierGroups = groupBy(programs, 'funding_tier');
+      const tierMeta = {
+        tier1_free_europe: { label: "🎓 Free/Low\\nEurope", prob: 0.25, color: "#a29bfe", note: "Germany, Switzerland. High ROI, easier admission (40-70%).", phase: 1 },
+        tier2_elite_us: { label: "🏆 Elite US\\nTop Tier", prob: 0.35, color: "#00e5ff", note: "MIT, Stanford, CMU. Hardest admission (5-15%).", phase: 1 },
+        tier3_midtier_global: { label: "🌍 Mid-Tier\\nGlobal", prob: 0.30, color: "#fd79a8", note: "Canada, UK, Australia. Moderate admission (30-50%).", phase: 1 },
+        tier4_asia_regional: { label: "🏠 Asia &\\nRegional", prob: 0.10, color: "#00cec9", note: "India, Singapore, HK. Lower cost.", phase: 1 }
+      };
+
+      nodes.masters_root = {
+        id: "masters_root",
+        phase: 0,
+        label: "🎓 Pursue\\nMasters Degree",
+        salary: `${programs.length} programs\\n38 countries`,
+        prob: 0.15,
+        color: "#a29bfe",
+        note: "Data from database.",
+        children: Object.keys(tierMeta)
+      };
+
+      for (const [tierId, meta] of Object.entries(tierMeta)) {
+        const tierProgs = tierGroups[tierId] || [];
+        const fieldGroups = groupBy(tierProgs, 'field');
+        const fieldIds = Object.keys(fieldGroups).map(f => `${tierId}_field_${makeId(f)}`);
+
+        nodes[tierId] = {
+          id: tierId,
+          phase: meta.phase,
+          label: meta.label,
+          salary: `${tierProgs.length} programs`,
+          prob: meta.prob,
+          color: meta.color,
+          note: meta.note,
+          children: fieldIds
+        };
+
+        for (const [field, fieldProgs] of Object.entries(fieldGroups)) {
+          const fieldId = `${tierId}_field_${makeId(field)}`;
+          const progIds = fieldProgs.map(p => `prog_${p.id}`);
+
+          nodes[fieldId] = {
+            id: fieldId,
+            phase: 2,
+            label: `${getFieldEmoji(field)} ${field}\\n${fieldProgs.length} programs`,
+            salary: "Various unis",
+            prob: 1.0 / Object.keys(fieldGroups).length,
+            color: getFieldColor(field),
+            note: `${fieldProgs.length} ${field} programs.`,
+            children: progIds
+          };
+
+          for (const p of fieldProgs) {
+            const progId = `prog_${p.id}`;
+            const salary = [p.y1_salary_usd && `Y1: $${p.y1_salary_usd}K`, p.y10_salary_usd && `Y10: $${p.y10_salary_usd}K`].filter(Boolean).join('\\n') || 'N/A';
+            const note = `${p.university_name}, ${p.country}. ${p.tuition_usd ? `Tuition: $${p.tuition_usd}K. ` : ''}${p.net_10yr_usd ? `Net 10yr: $${p.net_10yr_usd}K.` : ''}`;
+
+            nodes[progId] = {
+              id: progId,
+              phase: 3,
+              label: `${truncate(p.university_name, 20)}\\n${truncate(p.program_name, 25)}`,
+              salary,
+              prob: getProb(p.funding_tier),
+              color: tierMeta[p.funding_tier].color,
+              note,
+              children: []
+            };
+          }
+        }
+      }
+
+      // Career nodes
+      nodes.p1_promoted = { id: "p1_promoted", phase: 0, label: "✦ Promoted to L4\\nat Motive", salary: "400–475K PKR/mo", prob: 0.52, color: "#00e5ff", note: "~50–55% chance.", children: [] };
+      nodes.p1_notpromoted_stay = { id: "p1_notpromoted_stay", phase: 0, label: "✗ Not Promoted\\nStay", salary: "255–270K PKR/mo", prob: 0.28, color: "#ff9f43", note: "Increments only.", children: [] };
+      nodes.p1_switch_local = { id: "p1_switch_local", phase: 0, label: "↗ Leave Motive", salary: "320–420K PKR/mo", prob: 0.20, color: "#a29bfe", note: "Local company.", children: [] };
+
+      return nodes;
+    }
+
+    // Main Component
+    function CareerTreeV2() {
+      const [nodes, setNodes] = useState(null);
+      const [selectedPath, setSelectedPath] = useState([]);
+      const [hoveredNode, setHoveredNode] = useState(null);
+      const [activeLeaf, setActiveLeaf] = useState(null);
+      const [collapsedNodes, setCollapsedNodes] = useState(new Set());
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+
+      useEffect(() => {
+        async function load() {
+          try {
+            if (!(await checkHealth())) throw new Error('API not responding. Start backend: cd backend && python3 app.py');
+            const programs = await fetchPrograms();
+            setNodes(buildTree(programs));
+            setLoading(false);
+          } catch (err) {
+            setError(err.message);
+            setLoading(false);
+          }
+        }
+        load();
+      }, []);
+
+      const isDescendantOf = useCallback((nodeId, ancestorId) => {
+        if (!nodes) return false;
+        const ancestor = nodes[ancestorId];
+        if (!ancestor) return false;
+        for (const childId of ancestor.children || []) {
+          if (childId === nodeId) return true;
+          if (isDescendantOf(nodeId, childId)) return true;
+        }
+        return false;
+      }, [nodes]);
+
+      const isInPath = useCallback((id) => selectedPath.includes(id), [selectedPath]);
+      const isHighlighted = useCallback((id) => {
+        if (selectedPath.length === 0) return true;
+        if (selectedPath.indexOf(id) !== -1) return true;
+        return isDescendantOf(id, selectedPath[selectedPath.length - 1]);
+      }, [selectedPath, isDescendantOf]);
+
+      const isNodeVisible = useCallback((nodeId) => {
+        for (const id of Object.keys(nodes || {})) {
+          if (collapsedNodes.has(id) && isDescendantOf(nodeId, id)) return false;
+        }
+        return true;
+      }, [collapsedNodes, isDescendantOf, nodes]);
+
+      const toggleCollapse = useCallback((id, e) => {
+        e.stopPropagation();
+        setCollapsedNodes(prev => {
+          const next = new Set(prev);
+          next.has(id) ? next.delete(id) : next.add(id);
+          return next;
+        });
+      }, []);
+
+      const handleNodeClick = useCallback((id) => {
+        if (!nodes) return;
+        if (id === "root") { setSelectedPath([]); setActiveLeaf(null); return; }
+        const node = nodes[id];
+        const parentInPath = selectedPath.length === 0 || (nodes[selectedPath[selectedPath.length - 1]]?.children || []).includes(id);
+        if (parentInPath) {
+          const idx = selectedPath.indexOf(id);
+          if (idx !== -1) {
+            setSelectedPath(selectedPath.slice(0, idx + 1));
+            setActiveLeaf((node.children || []).length === 0 ? id : null);
+          } else {
+            setSelectedPath([...selectedPath, id]);
+            setActiveLeaf((node.children || []).length === 0 ? id : null);
+          }
+        } else {
+          setSelectedPath([id]);
+          setActiveLeaf((node.children || []).length === 0 ? id : null);
+        }
+      }, [nodes, selectedPath]);
+
+      if (loading) return <div style={{minHeight:"100vh",background:"#070b14",color:"#e8eaf6",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"24px"}}>⏳ Loading...</div>;
+      if (error) return <div style={{minHeight:"100vh",background:"#070b14",color:"#ef4444",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:"20px",padding:"40px"}}><div style={{fontSize:"32px"}}>❌ Error</div><div style={{maxWidth:"600px",textAlign:"center",background:"#1a0a0a",padding:"20px",borderRadius:"10px",border:"1px solid #ef4444"}}>{error}</div></div>;
+      if (!nodes) return null;
+
+      const phaseNodes = [-1, 0, 1, 2, 3].map(ph => Object.values(nodes).filter(n => n.phase === ph && isNodeVisible(n.id)));
+      const pathProbs = selectedPath.reduce((acc, id, i) => { acc.push((i === 0 ? 1 : acc[i-1]) * (nodes[id]?.prob || 1)); return acc; }, []);
+      const leafNode = activeLeaf ? nodes[activeLeaf] : null;
+      const PHASE_LABELS = ["Phase 1 · Yr 0–2", "Phase 2 · Yr 2–4", "Phase 3 · Yr 4–7", "Phase 4 · Yr 7–10"];
+      const PHASE_COLORS = ["#00e5ff22", "#00ff9f22", "#a29bfe22", "#fd79a822"];
+
+      const NodeCard = ({ node, inPath, highlighted, onClick, onHover, hovered, cumProb, isLeaf, collapsed, onToggleCollapse, hasChildren }) => {
+        const getProbColor = (prob) => prob >= 0.55 ? "#00ff9f" : prob >= 0.35 ? "#fdcb6e" : "#ff7675";
+        return (
+          <div onClick={onClick} onMouseEnter={() => onHover(node.id)} onMouseLeave={() => onHover(null)} style={{background:inPath?`${node.color}18`:hovered?"#131c2e":"#0c1220",border:`1.5px solid ${inPath?node.color:hovered?node.color+"88":"#1e2a3a"}`,borderRadius:9,padding:"9px 10px",cursor:"pointer",opacity:highlighted?1:0.28,transition:"all 0.15s ease",boxShadow:inPath?`0 0 12px ${node.color}33`:"none",minHeight:84,position:"relative"}}>
+            {hasChildren && !isLeaf && <div onClick={(e)=>onToggleCollapse(node.id,e)} style={{position:"absolute",top:-1,left:-1,background:collapsed?"#1a2744":"#2d4a66",borderRadius:"8px 0 4px 0",padding:"2px 6px",fontSize:11,color:"#93c5fd",cursor:"pointer",fontWeight:"bold"}} title={collapsed?"Expand":"Collapse"}>{collapsed?"+":"−"}</div>}
+            {isLeaf && <div style={{position:"absolute",top:-1,right:-1,background:"#1a2744",borderRadius:"0 8px 0 4px",padding:"1px 5px",fontSize:8,color:"#4a90d9"}}>END</div>}
+            <div style={{fontSize:10.5,fontWeight:700,color:inPath?node.color:hovered?node.color+"cc":"#94a3b8",lineHeight:1.35,marginBottom:5,whiteSpace:"pre-line"}}>{node.label.replace(/\\n/g,"\n")}</div>
+            <div style={{fontSize:9.5,color:"#64748b",lineHeight:1.3,whiteSpace:"pre-line"}}>{node.salary.replace(/\\n/g,"\n")}</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6}}>
+              <div style={{fontSize:9,color:getProbColor(node.prob),background:`${getProbColor(node.prob)}18`,borderRadius:4,padding:"1px 5px"}}>{(node.prob*100).toFixed(0)}% branch</div>
+              {cumProb!==null && <div style={{fontSize:9,color:"#4a5568"}}>{(cumProb*100).toFixed(1)}% overall</div>}
+            </div>
+          </div>
+        );
+      };
+
+      return (
+        <div style={{minHeight:"100vh",background:"#070b14",color:"#e8eaf6",fontFamily:"'DM Mono','Fira Code',monospace",padding:"24px 16px",overflowX:"auto"}}>
+          <div style={{textAlign:"center",marginBottom:28}}>
+            <div style={{fontFamily:"'Bebas Neue','Impact',sans-serif",fontSize:"clamp(22px,4vw,44px)",letterSpacing:"0.12em",background:"linear-gradient(90deg,#00e5ff,#00ff9f,#a29bfe)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",marginBottom:4}}>CAREER DECISION TREE v2</div>
+            <div style={{fontSize:12,color:"#636e72",letterSpacing:"0.2em"}}>{Object.keys(nodes).length} NODES · DATABASE-DRIVEN</div>
+            <div style={{fontSize:11,color:"#4a5568",marginTop:6}}>Click nodes to trace path · Click − / + to collapse/expand</div>
+            <div style={{fontSize:10,color:"#00ff9f",marginTop:8}}>✓ Connected to API</div>
+          </div>
+
+          <div style={{display:"flex",gap:0,alignItems:"flex-start",overflowX:"auto",paddingBottom:24,minWidth:"900px"}}>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:140,paddingTop:60}}>
+              <NodeCard node={nodes.root} inPath={true} highlighted={true} onClick={()=>handleNodeClick("root")} onHover={setHoveredNode} hovered={hoveredNode==="root"} cumProb={1.0} collapsed={collapsedNodes.has("root")} onToggleCollapse={toggleCollapse} hasChildren={(nodes.root.children||[]).length>0}/>
+            </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"center",minWidth:24,color:"#1e3a5f",fontSize:18,flexShrink:0,alignSelf:"center"}}>›</div>
+            {[0,1,2,3].map(phaseIdx=><React.Fragment key={phaseIdx}><div style={{display:"flex",alignItems:"stretch"}}><div style={{display:"flex",flexDirection:"column",minWidth:155,background:PHASE_COLORS[phaseIdx],borderRadius:12,padding:"8px 6px",gap:10}}><div style={{fontSize:9,letterSpacing:"0.18em",color:"#64748b",textAlign:"center",borderBottom:"1px solid #1e2a3a",paddingBottom:6,marginBottom:2}}>{PHASE_LABELS[phaseIdx]}</div>{phaseNodes[phaseIdx+1].map(node=>{const cumIdx=selectedPath.indexOf(node.id);const cumP=cumIdx!==-1?pathProbs[cumIdx]:null;return <NodeCard key={node.id} node={node} inPath={isInPath(node.id)} highlighted={isHighlighted(node.id)} onClick={()=>handleNodeClick(node.id)} onHover={setHoveredNode} hovered={hoveredNode===node.id} cumProb={cumP} isLeaf={(node.children||[]).length===0} collapsed={collapsedNodes.has(node.id)} onToggleCollapse={toggleCollapse} hasChildren={(node.children||[]).length>0}/>})}</div></div>{phaseIdx<3 && <div style={{display:"flex",alignItems:"center",justifyContent:"center",minWidth:24,color:"#1e3a5f",fontSize:18,flexShrink:0,alignSelf:"center"}}>›</div>}</React.Fragment>)}
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<CareerTreeV2 />);
+  </script>
+</body>
+</html>

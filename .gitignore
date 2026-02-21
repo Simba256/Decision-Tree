@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Backend runtime files
+backend/api.log
+backend/api.pid
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude session data
+.claude/
+
+# Deprecated/old files (from v1)
+career-tree.jsx
+run-career-tree.html
+run-career-tree-test.html
+masters_nodes_*.js
+career-tree.html
+programs_data.json
+node_structure.json
+decision-tree.json
+MASTERS_INTEGRATION_SUMMARY.md
+index.html
