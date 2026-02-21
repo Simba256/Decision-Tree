@@ -241,7 +241,8 @@
       const phaseNodes = [-1, 0, 1, 2, 3].map(ph => Object.values(nodes).filter(n => n.phase === ph && isNodeVisible(n.id)));
       const pathProbs = selectedPath.reduce((acc, id, i) => { acc.push((i === 0 ? 1 : acc[i-1]) * (nodes[id]?.prob || 1)); return acc; }, []);
       const leafNode = activeLeaf ? nodes[activeLeaf] : null;
-      const PHASE_LABELS = ["Phase 1 · Yr 0–2", "Phase 2 · Yr 2–4", "Phase 3 · Yr 4–7", "Phase 4 · Yr 7–10"];
+      // Split timeline: Masters uses steps, Corporate uses years
+      const PHASE_LABELS = ["Immediate Decisions · Year 0", "Masters Step 1 · Funding Tier", "Masters Step 2 · Field", "Masters Step 3 · Program"];
       const PHASE_COLORS = ["#00e5ff22", "#00ff9f22", "#a29bfe22", "#fd79a822"];
 
       const NodeCard = ({ node, inPath, highlighted, onClick, onHover, hovered, cumProb, isLeaf, collapsed, onToggleCollapse, hasChildren }) => {
