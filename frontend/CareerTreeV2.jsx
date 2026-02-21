@@ -211,13 +211,25 @@ export default function CareerTreeV2() {
 
   const leafNode = activeLeaf ? nodes[activeLeaf] : null;
 
-  // Split timeline: Masters uses steps, Corporate uses years
-  const PHASE_LABELS = [
+  // Detect which path is selected to show appropriate labels
+  const onMastersPath = selectedPath.includes("masters_root") ||
+    selectedPath.some(id => nodes[id]?.id?.includes("tier") ||
+                            nodes[id]?.id?.includes("field") ||
+                            nodes[id]?.id?.startsWith("prog_"));
+
+  // Dynamic phase labels based on path
+  const PHASE_LABELS = onMastersPath ? [
     "Immediate Decisions · Year 0",
     "Masters Step 1 · Funding Tier",
     "Masters Step 2 · Field",
     "Masters Step 3 · Program"
+  ] : [
+    "Immediate Decisions · Year 0",
+    "Phase 1 · Yr 0–2",
+    "Phase 2 · Yr 2–4",
+    "Phase 3 · Yr 4–7"
   ];
+
   const PHASE_COLORS = ["#00e5ff22", "#00ff9f22", "#a29bfe22", "#fd79a822"];
 
   // ========================================================================
