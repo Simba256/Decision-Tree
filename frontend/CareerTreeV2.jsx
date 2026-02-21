@@ -202,6 +202,19 @@ export default function CareerTreeV2() {
     Object.values(nodes).filter(n => n.phase === ph && isNodeVisible(n.id))
   );
 
+  // Separate phase 0 nodes by branch type
+  const phase0Nodes = phaseNodes[1]; // phaseNodes[1] is phase 0
+  const corporateNodes = phase0Nodes.filter(n => n.branchType === "corporate");
+  const mastersNodes = phase0Nodes.filter(n => n.branchType === "masters");
+
+  // Group masters nodes by depth for nested rendering
+  const mastersByDepth = {
+    0: mastersNodes.filter(n => n.depth === 0),
+    1: mastersNodes.filter(n => n.depth === 1),
+    2: mastersNodes.filter(n => n.depth === 2),
+    3: mastersNodes.filter(n => n.depth === 3),
+  };
+
   const pathProbs = selectedPath.reduce((acc, id, i) => {
     const node = nodes[id];
     const prev = i === 0 ? 1 : acc[i - 1];
@@ -295,50 +308,226 @@ export default function CareerTreeV2() {
 
         <ConnectorArrow />
 
-        {/* Phase columns */}
-        {[0, 1, 2, 3].map((phaseIdx) => (
-          <div key={phaseIdx} style={{ display: "flex", alignItems: "stretch" }}>
+        {/* Phase 0 - Immediate Decisions (Split by branch type) */}
+        <div style={{ display: "flex", alignItems: "stretch" }}>
+          <div style={{
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 155,
+            background: PHASE_COLORS[0],
+            borderRadius: 12,
+            padding: "8px 6px",
+            gap: 10,
+          }}>
             <div style={{
-              display: "flex",
-              flexDirection: "column",
-              minWidth: 155,
-              background: PHASE_COLORS[phaseIdx],
-              borderRadius: 12,
-              padding: "8px 6px",
-              gap: 10,
-            }}>
-              <div style={{
-                fontSize: 9,
-                letterSpacing: "0.18em",
-                color: "#64748b",
-                textAlign: "center",
-                borderBottom: "1px solid #1e2a3a",
-                paddingBottom: 6,
-                marginBottom: 2,
-              }}>{PHASE_LABELS[phaseIdx]}</div>
-              {phaseNodes[phaseIdx + 1].map((node) => {
-                const cumIdx = selectedPath.indexOf(node.id);
-                const cumP = cumIdx !== -1 ? pathProbs[cumIdx] : null;
-                return (
-                  <NodeCard
-                    key={node.id}
-                    node={node}
-                    inPath={isInPath(node.id)}
-                    highlighted={isHighlighted(node.id)}
-                    onClick={() => handleNodeClick(node.id)}
-                    onHover={setHoveredNode}
-                    hovered={hoveredNode === node.id}
-                    cumProb={cumP}
-                    isLeaf={(node.children || []).length === 0}
-                    collapsed={collapsedNodes.has(node.id)}
-                    onToggleCollapse={toggleCollapse}
-                    hasChildren={(node.children || []).length > 0}
-                  />
-                );
-              })}
-            </div>
-            {phaseIdx < 3 && <ConnectorArrow />}
+              fontSize: 9,
+              letterSpacing: "0.18em",
+              color: "#64748b",
+              textAlign: "center",
+              borderBottom: "1px solid #1e2a3a",
+              paddingBottom: 6,
+              marginBottom: 2,
+            }}>IMMEDIATE DECISIONS · NOW</div>
+
+            {/* Corporate Career Options */}
+            {corporateNodes.length > 0 && (
+              <>
+                <div style={{
+                  fontSize: 8,
+                  letterSpacing: "0.15em",
+                  color: "#4a90d9",
+                  paddingLeft: 4,
+                  marginTop: 4,
+                }}>CORPORATE PATH</div>
+                {corporateNodes.map((node) => {
+                  const cumIdx = selectedPath.indexOf(node.id);
+                  const cumP = cumIdx !== -1 ? pathProbs[cumIdx] : null;
+                  return (
+                    <NodeCard
+                      key={node.id}
+                      node={node}
+                      inPath={isInPath(node.id)}
+                      highlighted={isHighlighted(node.id)}
+                      onClick={() => handleNodeClick(node.id)}
+                      onHover={setHoveredNode}
+                      hovered={hoveredNode === node.id}
+                      cumProb={cumP}
+                      isLeaf={(node.children || []).length === 0}
+                      collapsed={collapsedNodes.has(node.id)}
+                      onToggleCollapse={toggleCollapse}
+                      hasChildren={(node.children || []).length > 0}
+                    />
+                  );
+                })}
+              </>
+            )}
+
+            {/* Masters Branch - Nested */}
+            {mastersNodes.length > 0 && (
+              <>
+                <div style={{
+                  fontSize: 8,
+                  letterSpacing: "0.15em",
+                  color: "#a29bfe",
+                  paddingLeft: 4,
+                  marginTop: 8,
+                  borderTop: "1px solid #1e2a3a",
+                  paddingTop: 8,
+                }}>MASTERS PATH</div>
+
+                {/* Depth 0 - Masters Root */}
+                {mastersByDepth[0].map((node) => {
+                  const cumIdx = selectedPath.indexOf(node.id);
+                  const cumP = cumIdx !== -1 ? pathProbs[cumIdx] : null;
+                  return (
+                    <div key={node.id}>
+                      <NodeCard
+                        node={node}
+                        inPath={isInPath(node.id)}
+                        highlighted={isHighlighted(node.id)}
+                        onClick={() => handleNodeClick(node.id)}
+                        onHover={setHoveredNode}
+                        hovered={hoveredNode === node.id}
+                        cumProb={cumP}
+                        isLeaf={(node.children || []).length === 0}
+                        collapsed={collapsedNodes.has(node.id)}
+                        onToggleCollapse={toggleCollapse}
+                        hasChildren={(node.children || []).length > 0}
+                      />
+
+                      {/* Depth 1 - Tiers (indented) */}
+                      {!collapsedNodes.has(node.id) && mastersByDepth[1]
+                        .filter(tier => node.children.includes(tier.id))
+                        .map((tier) => {
+                          const cumIdx = selectedPath.indexOf(tier.id);
+                          const cumP = cumIdx !== -1 ? pathProbs[cumIdx] : null;
+                          return (
+                            <div key={tier.id} style={{ marginLeft: 8, marginTop: 6 }}>
+                              <NodeCard
+                                node={tier}
+                                inPath={isInPath(tier.id)}
+                                highlighted={isHighlighted(tier.id)}
+                                onClick={() => handleNodeClick(tier.id)}
+                                onHover={setHoveredNode}
+                                hovered={hoveredNode === tier.id}
+                                cumProb={cumP}
+                                isLeaf={(tier.children || []).length === 0}
+                                collapsed={collapsedNodes.has(tier.id)}
+                                onToggleCollapse={toggleCollapse}
+                                hasChildren={(tier.children || []).length > 0}
+                                compact={true}
+                              />
+
+                              {/* Depth 2 - Fields (double indented) */}
+                              {!collapsedNodes.has(tier.id) && mastersByDepth[2]
+                                .filter(field => tier.children.includes(field.id))
+                                .map((field) => {
+                                  const cumIdx = selectedPath.indexOf(field.id);
+                                  const cumP = cumIdx !== -1 ? pathProbs[cumIdx] : null;
+                                  return (
+                                    <div key={field.id} style={{ marginLeft: 8, marginTop: 4 }}>
+                                      <NodeCard
+                                        node={field}
+                                        inPath={isInPath(field.id)}
+                                        highlighted={isHighlighted(field.id)}
+                                        onClick={() => handleNodeClick(field.id)}
+                                        onHover={setHoveredNode}
+                                        hovered={hoveredNode === field.id}
+                                        cumProb={cumP}
+                                        isLeaf={(field.children || []).length === 0}
+                                        collapsed={collapsedNodes.has(field.id)}
+                                        onToggleCollapse={toggleCollapse}
+                                        hasChildren={(field.children || []).length > 0}
+                                        compact={true}
+                                      />
+
+                                      {/* Depth 3 - Programs (triple indented) */}
+                                      {!collapsedNodes.has(field.id) && mastersByDepth[3]
+                                        .filter(prog => field.children.includes(prog.id))
+                                        .slice(0, 5) // Show only first 5 programs by default
+                                        .map((prog) => {
+                                          const cumIdx = selectedPath.indexOf(prog.id);
+                                          const cumP = cumIdx !== -1 ? pathProbs[cumIdx] : null;
+                                          return (
+                                            <div key={prog.id} style={{ marginLeft: 8, marginTop: 3 }}>
+                                              <NodeCard
+                                                node={prog}
+                                                inPath={isInPath(prog.id)}
+                                                highlighted={isHighlighted(prog.id)}
+                                                onClick={() => handleNodeClick(prog.id)}
+                                                onHover={setHoveredNode}
+                                                hovered={hoveredNode === prog.id}
+                                                cumProb={cumP}
+                                                isLeaf={true}
+                                                collapsed={false}
+                                                onToggleCollapse={toggleCollapse}
+                                                hasChildren={false}
+                                                compact={true}
+                                              />
+                                            </div>
+                                          );
+                                        })}
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  );
+                })}
+              </>
+            )}
           </div>
+          <ConnectorArrow />
+        </div>
+
+        {/* Phase columns 1, 2, 3 (future expansion) */}
+        {[1, 2, 3].map((phaseIdx) => (
+          phaseNodes[phaseIdx + 1].length > 0 && (
+            <div key={phaseIdx} style={{ display: "flex", alignItems: "stretch" }}>
+              <div style={{
+                display: "flex",
+                flexDirection: "column",
+                minWidth: 155,
+                background: PHASE_COLORS[phaseIdx],
+                borderRadius: 12,
+                padding: "8px 6px",
+                gap: 10,
+              }}>
+                <div style={{
+                  fontSize: 9,
+                  letterSpacing: "0.18em",
+                  color: "#64748b",
+                  textAlign: "center",
+                  borderBottom: "1px solid #1e2a3a",
+                  paddingBottom: 6,
+                  marginBottom: 2,
+                }}>{PHASE_LABELS[phaseIdx]}</div>
+                {phaseNodes[phaseIdx + 1].map((node) => {
+                  const cumIdx = selectedPath.indexOf(node.id);
+                  const cumP = cumIdx !== -1 ? pathProbs[cumIdx] : null;
+                  return (
+                    <NodeCard
+                      key={node.id}
+                      node={node}
+                      inPath={isInPath(node.id)}
+                      highlighted={isHighlighted(node.id)}
+                      onClick={() => handleNodeClick(node.id)}
+                      onHover={setHoveredNode}
+                      hovered={hoveredNode === node.id}
+                      cumProb={cumP}
+                      isLeaf={(node.children || []).length === 0}
+                      collapsed={collapsedNodes.has(node.id)}
+                      onToggleCollapse={toggleCollapse}
+                      hasChildren={(node.children || []).length > 0}
+                    />
+                  );
+                })}
+              </div>
+              {phaseIdx < 3 && <ConnectorArrow />}
+            </div>
+          )
         ))}
       </div>
 
@@ -364,7 +553,7 @@ export default function CareerTreeV2() {
 // HELPER COMPONENTS
 // ============================================================================
 
-function NodeCard({ node, inPath, highlighted, onClick, onHover, hovered, cumProb, isLeaf, collapsed, onToggleCollapse, hasChildren }) {
+function NodeCard({ node, inPath, highlighted, onClick, onHover, hovered, cumProb, isLeaf, collapsed, onToggleCollapse, hasChildren, compact = false }) {
   const dim = !highlighted;
 
   function getProbColor(prob) {
@@ -381,13 +570,13 @@ function NodeCard({ node, inPath, highlighted, onClick, onHover, hovered, cumPro
       style={{
         background: inPath ? `${node.color}18` : hovered ? "#131c2e" : "#0c1220",
         border: `1.5px solid ${inPath ? node.color : hovered ? node.color + "88" : "#1e2a3a"}`,
-        borderRadius: 9,
-        padding: "9px 10px",
+        borderRadius: compact ? 6 : 9,
+        padding: compact ? "6px 8px" : "9px 10px",
         cursor: "pointer",
         opacity: dim ? 0.28 : 1,
         transition: "all 0.15s ease",
         boxShadow: inPath ? `0 0 12px ${node.color}33` : "none",
-        minHeight: 84,
+        minHeight: compact ? 60 : 84,
         position: "relative",
       }}
     >
@@ -424,19 +613,19 @@ function NodeCard({ node, inPath, highlighted, onClick, onHover, hovered, cumPro
         }}>END</div>
       )}
       <div style={{
-        fontSize: 10.5,
+        fontSize: compact ? 9 : 10.5,
         fontWeight: 700,
         color: inPath ? node.color : hovered ? node.color + "cc" : "#94a3b8",
         lineHeight: 1.35,
-        marginBottom: 5,
+        marginBottom: compact ? 3 : 5,
         whiteSpace: "pre-line",
       }}>{node.label.replace(/\\n/g, "\n")}</div>
-      <div style={{ fontSize: 9.5, color: "#64748b", lineHeight: 1.3, whiteSpace: "pre-line" }}>
+      <div style={{ fontSize: compact ? 8 : 9.5, color: "#64748b", lineHeight: 1.3, whiteSpace: "pre-line" }}>
         {node.salary.replace(/\\n/g, "\n")}
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: compact ? 4 : 6 }}>
         <div style={{
-          fontSize: 9,
+          fontSize: compact ? 8 : 9,
           color: getProbColor(node.prob),
           background: `${getProbColor(node.prob)}18`,
           borderRadius: 4,
@@ -445,7 +634,7 @@ function NodeCard({ node, inPath, highlighted, onClick, onHover, hovered, cumPro
           {(node.prob * 100).toFixed(0)}% branch
         </div>
         {cumProb !== null && (
-          <div style={{ fontSize: 9, color: "#4a5568" }}>
+          <div style={{ fontSize: compact ? 8 : 9, color: "#4a5568" }}>
             {(cumProb * 100).toFixed(1)}% overall
           </div>
         )}
