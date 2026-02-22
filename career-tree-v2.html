@@ -31,6 +31,25 @@
       return data.programs;
     }
 
+    async function fetchCareerNodes() {
+      const response = await fetch(`${API_BASE_URL}/career-nodes`);
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
+      const data = await response.json();
+      return data.nodes;
+    }
+
+    async function fetchNetworthCompact(lifestyle = 'frugal', familyYear = 5) {
+      const response = await fetch(`${API_BASE_URL}/networth?compact=true&lifestyle=${lifestyle}&family_year=${familyYear}`);
+      if (!response.ok) throw new Error(`Networth API error: ${response.status}`);
+      return await response.json();
+    }
+
+    async function fetchProgramNetworth(programId, lifestyle = 'frugal', familyYear = 5) {
+      const response = await fetch(`${API_BASE_URL}/networth/${programId}?lifestyle=${lifestyle}&family_year=${familyYear}`);
+      if (!response.ok) throw new Error(`Networth API error: ${response.status}`);
+      return await response.json();
+    }
+
     async function checkHealth() {
       try {
         const response = await fetch(`${API_BASE_URL}/health`);
@@ -43,8 +62,17 @@
     }
 
     // Tree Builder
-    function buildTree(programs) {
+    function buildTree(programs, careerNodes, networthData) {
       const nodes = {};
+
+      // Build networth lookup by program_id
+      const nwLookup = {};
+      if (networthData && networthData.programs) {
+        for (const p of networthData.programs) {
+          nwLookup[p.program_id] = p;
+        }
+      }
+      const baseline = networthData ? networthData.baseline : null;
 
       function groupBy(array, key) {
         return array.reduce((result, item) => {
@@ -68,6 +96,7 @@
       const getFieldColor = (field) => ({ 'AI/ML': '#00ff9f', 'CS/SWE': '#00e5ff', 'DS': '#a29bfe', 'Quant/FE': '#fdcb6e' }[field] || '#636e72');
       const getProb = (tier) => ({ tier1_free_europe: 0.55, tier2_elite_us: 0.10, tier3_midtier_global: 0.40, tier4_asia_regional: 0.45 }[tier] || 0.50);
 
+      // Root node (stays in frontend — personal info)
       nodes.root = {
         id: "root",
         phase: -1,
@@ -75,8 +104,12 @@
         salary: "220K PKR/mo\\nL3 Embedded AI",
         prob: 1.0,
         color: "#00ff9f",
-        children: ["masters_root", "p1_promoted", "p1_notpromoted_stay", "p1_switch_local"]
+        children: ["masters_root", "p1_promoted", "p1_notpromoted_stay", "p1_switch_local", "p1_trading", "p1_startup", "p1_freelance"]
       };
+
+      // ═══════════════════════════════════════════════════════════
+      // MASTERS PATH — built dynamically from programs API data
+      // ═══════════════════════════════════════════════════════════
 
       const tierGroups = groupBy(programs, 'funding_tier');
       const tierMeta = {
@@ -93,7 +126,7 @@
         salary: `${programs.length} programs\\n38 countries`,
         prob: 0.15,
         color: "#a29bfe",
-        note: "Data from database.",
+        note: baseline ? `Baseline (no masters): $${baseline.total_networth_k.toFixed(0)}K over 12yr. Data from database.` : "Data from database.",
         children: Object.keys(tierMeta)
       };
 
@@ -102,11 +135,19 @@
         const fieldGroups = groupBy(tierProgs, 'field');
         const fieldIds = Object.keys(fieldGroups).map(f => `${tierId}_field_${makeId(f)}`);
 
+        // Calculate tier average net benefit
+        const tierNwValues = tierProgs.map(p => nwLookup[p.id]).filter(Boolean);
+        const tierAvgBenefit = tierNwValues.length > 0
+          ? tierNwValues.reduce((s, n) => s + n.net_benefit_k, 0) / tierNwValues.length
+          : null;
+
         nodes[tierId] = {
           id: tierId,
           phase: meta.phase,
           label: meta.label,
-          salary: `${tierProgs.length} programs`,
+          salary: tierAvgBenefit !== null
+            ? `${tierProgs.length} programs\\nAvg: ${tierAvgBenefit >= 0 ? '+' : ''}$${tierAvgBenefit.toFixed(0)}K`
+            : `${tierProgs.length} programs`,
           prob: meta.prob,
           color: meta.color,
           note: meta.note,
@@ -130,8 +171,14 @@
 
           for (const p of fieldProgs) {
             const progId = `prog_${p.id}`;
-            const salary = [p.y1_salary_usd && `Y1: $${p.y1_salary_usd}K`, p.y10_salary_usd && `Y10: $${p.y10_salary_usd}K`].filter(Boolean).join('\\n') || 'N/A';
-            const note = `${p.university_name}, ${p.country}. ${p.tuition_usd ? `Tuition: $${p.tuition_usd}K. ` : ''}${p.net_10yr_usd ? `Net 10yr: $${p.net_10yr_usd}K.` : ''}`;
+            const nw = nwLookup[p.id];
+            const benefitStr = nw ? `${nw.net_benefit_k >= 0 ? '+' : ''}$${nw.net_benefit_k.toFixed(0)}K benefit` : '';
+            const salary = [
+              p.y1_salary_usd && `Y1: $${p.y1_salary_usd}K`,
+              p.y10_salary_usd && `Y10: $${p.y10_salary_usd}K`,
+              benefitStr
+            ].filter(Boolean).join('\\n') || 'N/A';
+            const note = `${p.university_name}, ${p.country}. ${p.tuition_usd ? `Tuition: $${p.tuition_usd}K. ` : ''}${nw ? `12yr Net Worth: $${nw.masters_networth_k.toFixed(0)}K. Net Benefit vs baseline: ${nw.net_benefit_k >= 0 ? '+' : ''}$${nw.net_benefit_k.toFixed(0)}K. Work: ${nw.work_country}${nw.work_city ? ' (' + nw.work_city + ')' : ''}. Eff. Tax: ${(nw.effective_tax_rate_y10 * 100).toFixed(0)}%.` : (p.net_10yr_usd ? `Net 10yr: $${p.net_10yr_usd}K.` : '')}`;
 
             nodes[progId] = {
               id: progId,
@@ -141,16 +188,31 @@
               prob: getProb(p.funding_tier),
               color: tierMeta[p.funding_tier].color,
               note,
+              networth: nw || null,
+              programData: p,
               children: []
             };
           }
         }
       }
 
-      // Career nodes
-      nodes.p1_promoted = { id: "p1_promoted", phase: 0, label: "✦ Promoted to L4\\nat Motive", salary: "400–475K PKR/mo", prob: 0.52, color: "#00e5ff", note: "~50–55% chance.", children: [] };
-      nodes.p1_notpromoted_stay = { id: "p1_notpromoted_stay", phase: 0, label: "✗ Not Promoted\\nStay", salary: "255–270K PKR/mo", prob: 0.28, color: "#ff9f43", note: "Increments only.", children: [] };
-      nodes.p1_switch_local = { id: "p1_switch_local", phase: 0, label: "↗ Leave Motive", salary: "320–420K PKR/mo", prob: 0.20, color: "#a29bfe", note: "Local company.", children: [] };
+      // ═══════════════════════════════════════════════════════════
+      // ALL OTHER NODES — loaded from career_nodes API
+      // Career progression, trading, startup, freelancing paths
+      // ═══════════════════════════════════════════════════════════
+      for (const cn of careerNodes) {
+        nodes[cn.id] = {
+          id: cn.id,
+          phase: cn.phase,
+          label: cn.label,
+          salary: cn.salary || '',
+          prob: cn.prob,
+          color: cn.color,
+          note: cn.note || '',
+          node_type: cn.node_type,
+          children: cn.children || []
+        };
+      }
 
       return nodes;
     }
@@ -162,6 +224,8 @@
       const [hoveredNode, setHoveredNode] = useState(null);
       const [activeLeaf, setActiveLeaf] = useState(null);
       const [collapsedNodes, setCollapsedNodes] = useState(new Set());
+      const [lifestyle, setLifestyle] = useState('frugal');
+      const [familyYear, setFamilyYear] = useState(5);
       const [loading, setLoading] = useState(true);
       const [error, setError] = useState(null);
 
@@ -169,8 +233,12 @@
         async function load() {
           try {
             if (!(await checkHealth())) throw new Error('API not responding. Start backend: cd backend && python3 app.py');
-            const programs = await fetchPrograms();
-            setNodes(buildTree(programs));
+            const [programs, careerNodes, networthData] = await Promise.all([
+              fetchPrograms(),
+              fetchCareerNodes(),
+              fetchNetworthCompact(lifestyle, familyYear)
+            ]);
+            setNodes(buildTree(programs, careerNodes, networthData));
             setLoading(false);
           } catch (err) {
             setError(err.message);
@@ -178,7 +246,7 @@
           }
         }
         load();
-      }, []);
+      }, [lifestyle, familyYear]);
 
       const isDescendantOf = useCallback((nodeId, ancestorId) => {
         if (!nodes) return false;
@@ -214,6 +282,16 @@
         });
       }, []);
 
+      const collapseAll = useCallback(() => {
+        if (!nodes) return;
+        const allParents = new Set(Object.keys(nodes).filter(id => id !== 'root' && (nodes[id].children || []).length > 0));
+        setCollapsedNodes(allParents);
+      }, [nodes]);
+
+      const expandAll = useCallback(() => {
+        setCollapsedNodes(new Set());
+      }, []);
+
       const handleNodeClick = useCallback((id) => {
         if (!nodes) return;
         if (id === "root") { setSelectedPath([]); setActiveLeaf(null); return; }
@@ -242,24 +320,88 @@
       const pathProbs = selectedPath.reduce((acc, id, i) => { acc.push((i === 0 ? 1 : acc[i-1]) * (nodes[id]?.prob || 1)); return acc; }, []);
       const leafNode = activeLeaf ? nodes[activeLeaf] : null;
 
-      // Detect which path is selected to show appropriate labels
-      const onMastersPath = selectedPath.includes("masters_root") || selectedPath.some(id => nodes[id]?.id?.includes("tier") || nodes[id]?.id?.includes("field") || nodes[id]?.id?.startsWith("prog_"));
+      // Detect which path is selected using node_type from API data
+      const onMastersPath = selectedPath.includes("masters_root") || selectedPath.some(id => {
+        const nid = nodes[id]?.id || '';
+        return nid.includes("tier") || nid.includes("field") || nid.startsWith("prog_");
+      });
+      const onTradingPath = selectedPath.some(id => nodes[id]?.node_type === 'trading');
+      const onStartupPath = selectedPath.some(id => nodes[id]?.node_type === 'startup');
+      const onFreelancePath = selectedPath.some(id => nodes[id]?.node_type === 'freelance');
 
       // Dynamic phase labels based on path
-      const PHASE_LABELS = onMastersPath ? ["Immediate Decisions · Year 0", "Masters Step 1 · Funding Tier", "Masters Step 2 · Field", "Masters Step 3 · Program"] : ["Immediate Decisions · Year 0", "Phase 1 · Yr 0–2", "Phase 2 · Yr 2–4", "Phase 3 · Yr 4–7"];
+      let PHASE_LABELS;
+      if (onMastersPath) {
+        PHASE_LABELS = ["Immediate Decisions · Year 0", "Masters Step 1 · Funding Tier", "Masters Step 2 · Field", "Masters Step 3 · Program"];
+      } else if (onTradingPath) {
+        PHASE_LABELS = ["Side Hustle · Start Trading", "Specialization · Yr 0–1", "Outcomes · Yr 1–3", "Final · Yr 3–7"];
+      } else if (onStartupPath) {
+        PHASE_LABELS = ["Side Hustle · Start Building", "Product Type · Yr 0–1", "Traction · Yr 1–3", "Final · Yr 3–7"];
+      } else if (onFreelancePath) {
+        PHASE_LABELS = ["Side Hustle · Start Freelancing", "Channel · Yr 0–1", "Growth · Yr 1–3", "Final · Yr 3–7"];
+      } else {
+        PHASE_LABELS = ["Immediate Decisions · Year 0", "Phase 1 · Yr 0–2", "Phase 2 · Yr 2–4", "Phase 3 · Yr 4–7 (Final)"];
+      }
       const PHASE_COLORS = ["#00e5ff22", "#00ff9f22", "#a29bfe22", "#fd79a822"];
 
       const NodeCard = ({ node, inPath, highlighted, onClick, onHover, hovered, cumProb, isLeaf, collapsed, onToggleCollapse, hasChildren }) => {
         const getProbColor = (prob) => prob >= 0.55 ? "#00ff9f" : prob >= 0.35 ? "#fdcb6e" : "#ff7675";
+        const nw = node.networth;
+        const benefitColor = nw ? (nw.net_benefit_k >= 200 ? "#00ff9f" : nw.net_benefit_k >= 0 ? "#fdcb6e" : "#ff7675") : null;
         return (
           <div onClick={onClick} onMouseEnter={() => onHover(node.id)} onMouseLeave={() => onHover(null)} style={{background:inPath?`${node.color}18`:hovered?"#131c2e":"#0c1220",border:`1.5px solid ${inPath?node.color:hovered?node.color+"88":"#1e2a3a"}`,borderRadius:9,padding:"9px 10px",cursor:"pointer",opacity:highlighted?1:0.28,transition:"all 0.15s ease",boxShadow:inPath?`0 0 12px ${node.color}33`:"none",minHeight:84,position:"relative"}}>
             {hasChildren && !isLeaf && <div onClick={(e)=>onToggleCollapse(node.id,e)} style={{position:"absolute",top:-1,left:-1,background:collapsed?"#1a2744":"#2d4a66",borderRadius:"8px 0 4px 0",padding:"2px 6px",fontSize:11,color:"#93c5fd",cursor:"pointer",fontWeight:"bold"}} title={collapsed?"Expand":"Collapse"}>{collapsed?"+":"−"}</div>}
-            {isLeaf && <div style={{position:"absolute",top:-1,right:-1,background:"#1a2744",borderRadius:"0 8px 0 4px",padding:"1px 5px",fontSize:8,color:"#4a90d9"}}>END</div>}
+            {isLeaf && nw && <div style={{position:"absolute",top:-1,right:-1,background:nw.net_benefit_k>=0?"#0a2e1a":"#2e0a0a",borderRadius:"0 8px 0 4px",padding:"1px 5px",fontSize:8,color:benefitColor,fontWeight:"bold"}}>{nw.net_benefit_k>=0?"+":""}${nw.net_benefit_k.toFixed(0)}K</div>}
+            {isLeaf && !nw && <div style={{position:"absolute",top:-1,right:-1,background:"#1a2744",borderRadius:"0 8px 0 4px",padding:"1px 5px",fontSize:8,color:"#4a90d9"}}>END</div>}
             <div style={{fontSize:10.5,fontWeight:700,color:inPath?node.color:hovered?node.color+"cc":"#94a3b8",lineHeight:1.35,marginBottom:5,whiteSpace:"pre-line"}}>{node.label.replace(/\\n/g,"\n")}</div>
-            <div style={{fontSize:9.5,color:"#64748b",lineHeight:1.3,whiteSpace:"pre-line"}}>{node.salary.replace(/\\n/g,"\n")}</div>
+            <div style={{fontSize:9.5,color:"#64748b",lineHeight:1.3,whiteSpace:"pre-line"}}>{node.salary.replace(/\\n/g,"\n").split("\n").map((line, i) => {
+              if (line.includes("benefit")) return <span key={i} style={{color:benefitColor,fontWeight:700}}>{line}</span>;
+              return <span key={i}>{line}{i < node.salary.split("\\n").length - 1 ? "\n" : ""}</span>;
+            })}</div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6}}>
               <div style={{fontSize:9,color:getProbColor(node.prob),background:`${getProbColor(node.prob)}18`,borderRadius:4,padding:"1px 5px"}}>{(node.prob*100).toFixed(0)}% branch</div>
               {cumProb!==null && <div style={{fontSize:9,color:"#4a5568"}}>{(cumProb*100).toFixed(1)}% overall</div>}
+            </div>
+          </div>
+        );
+      };
+
+      // Program detail panel
+      const ProgramDetail = ({ node }) => {
+        const nw = node.networth;
+        const prog = node.programData;
+        if (!nw || !prog) return <div style={{background:"#0c1220",border:"1px solid #1e2a3a",borderRadius:12,padding:"20px",marginTop:20}}><div style={{color:"#94a3b8",fontSize:13}}>Select a program node to see net worth details.</div></div>;
+
+        const benefitColor = nw.net_benefit_k >= 200 ? "#00ff9f" : nw.net_benefit_k >= 0 ? "#fdcb6e" : "#ff7675";
+
+        return (
+          <div style={{background:"#0c1220",border:"1px solid #1e2a3a",borderRadius:12,padding:"20px 24px",marginTop:20}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:16}}>
+              <div>
+                <div style={{fontSize:16,fontWeight:700,color:"#e8eaf6"}}>{prog.university_name}</div>
+                <div style={{fontSize:13,color:"#94a3b8",marginTop:2}}>{prog.program_name} · {prog.field} · {prog.country}</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:24,fontWeight:700,color:benefitColor}}>{nw.net_benefit_k >= 0 ? "+" : ""}${nw.net_benefit_k.toFixed(0)}K</div>
+                <div style={{fontSize:10,color:"#64748b"}}>12yr net benefit vs baseline</div>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))",gap:12,marginTop:16}}>
+              {[
+                { label: "Tuition", value: `$${(prog.tuition_usd || 0).toFixed(0)}K`, color: "#ff7675" },
+                { label: "Total Study Cost", value: `$${nw.total_study_cost_k.toFixed(0)}K`, color: "#ff7675" },
+                { label: "Y1 Salary", value: `$${nw.y1_salary_k.toFixed(0)}K`, color: "#00e5ff" },
+                { label: "Y10 Salary", value: `$${nw.y10_salary_k.toFixed(0)}K`, color: "#00e5ff" },
+                { label: "12yr Net Worth", value: `$${nw.masters_networth_k.toFixed(0)}K`, color: "#a29bfe" },
+                { label: "Baseline NW", value: `$${nw.baseline_networth_k.toFixed(0)}K`, color: "#64748b" },
+                { label: "Work Location", value: `${nw.work_country}${nw.work_city ? ' (' + nw.work_city + ')' : ''}`, color: "#94a3b8" },
+                { label: "Eff. Tax (Y10)", value: `${(nw.effective_tax_rate_y10 * 100).toFixed(1)}%`, color: "#fdcb6e" },
+              ].map((item, i) => (
+                <div key={i} style={{background:"#131c2e",borderRadius:8,padding:"8px 10px"}}>
+                  <div style={{fontSize:9,color:"#64748b",letterSpacing:"0.05em",marginBottom:3}}>{item.label}</div>
+                  <div style={{fontSize:13,fontWeight:600,color:item.color}}>{item.value}</div>
+                </div>
+              ))}
             </div>
           </div>
         );
@@ -271,7 +413,33 @@
             <div style={{fontFamily:"'Bebas Neue','Impact',sans-serif",fontSize:"clamp(22px,4vw,44px)",letterSpacing:"0.12em",background:"linear-gradient(90deg,#00e5ff,#00ff9f,#a29bfe)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",marginBottom:4}}>CAREER DECISION TREE v2</div>
             <div style={{fontSize:12,color:"#636e72",letterSpacing:"0.2em"}}>{Object.keys(nodes).length} NODES · DATABASE-DRIVEN</div>
             <div style={{fontSize:11,color:"#4a5568",marginTop:6}}>Click nodes to trace path · Click − / + to collapse/expand</div>
-            <div style={{fontSize:10,color:"#00ff9f",marginTop:8}}>✓ Connected to API</div>
+            <div style={{display:"flex",gap:8,justifyContent:"center",marginTop:10}}>
+              <button onClick={collapseAll} style={{background:"#1a2744",border:"1px solid #2d4a66",borderRadius:6,padding:"4px 12px",fontSize:11,color:"#93c5fd",cursor:"pointer",fontFamily:"inherit",fontWeight:"bold"}}>− Collapse All</button>
+              <button onClick={expandAll} style={{background:"#1a2744",border:"1px solid #2d4a66",borderRadius:6,padding:"4px 12px",fontSize:11,color:"#93c5fd",cursor:"pointer",fontFamily:"inherit",fontWeight:"bold"}}>+ Expand All</button>
+            </div>
+            <div style={{display:"flex",gap:6,justifyContent:"center",alignItems:"center",marginTop:10}}>
+              <span style={{fontSize:11,color:lifestyle==='frugal'?"#00ff9f":"#4a5568",fontWeight:lifestyle==='frugal'?700:400,cursor:"pointer",transition:"all 0.15s"}} onClick={()=>setLifestyle('frugal')}>Frugal</span>
+              <div onClick={()=>setLifestyle(prev=>prev==='frugal'?'comfortable':'frugal')} style={{width:40,height:20,borderRadius:10,background:lifestyle==='comfortable'?"#a29bfe":"#1e2a3a",border:"1px solid #2d4a66",cursor:"pointer",position:"relative",transition:"background 0.2s"}}>
+                <div style={{width:16,height:16,borderRadius:8,background:"#e8eaf6",position:"absolute",top:1,left:lifestyle==='comfortable'?21:1,transition:"left 0.2s"}}/>
+              </div>
+              <span style={{fontSize:11,color:lifestyle==='comfortable'?"#a29bfe":"#4a5568",fontWeight:lifestyle==='comfortable'?700:400,cursor:"pointer",transition:"all 0.15s"}} onClick={()=>setLifestyle('comfortable')}>Comfortable</span>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",marginTop:10,gap:4}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:11,color:"#64748b"}}>Family Year</span>
+                <input type="range" min={1} max={13} value={familyYear} onChange={e=>setFamilyYear(Number(e.target.value))} style={{width:160,accentColor:"#fdcb6e",cursor:"pointer"}}/>
+                <span style={{fontSize:12,fontWeight:700,color:"#fdcb6e",minWidth:20,textAlign:"center"}}>{familyYear <= 12 ? familyYear : "∞"}</span>
+              </div>
+              <div style={{fontSize:10,color:"#94a3b8"}}>
+                {familyYear === 13 ? "Never marry — single costs all 12 years" :
+                 familyYear === 1 ? `Year 1 — Family during study` :
+                 familyYear === 2 ? `Year 2 — Family in final study year` :
+                 familyYear === 3 ? `Year 3 — Family right after masters` :
+                 familyYear <= 5 ? `Year ${familyYear} — Family ${familyYear - 2}yr after masters` :
+                 `Year ${familyYear} — Family ${familyYear - 2}yr after masters`}
+              </div>
+            </div>
+            <div style={{fontSize:10,color:"#00ff9f",marginTop:8}}>✓ Connected to API · {lifestyle === 'frugal' ? 'Frugal' : 'Comfortable'} · Family {familyYear <= 12 ? `at Yr ${familyYear}` : 'Never'}</div>
           </div>
 
           <div style={{display:"flex",gap:0,alignItems:"flex-start",overflowX:"auto",paddingBottom:24,minWidth:"900px"}}>
@@ -281,6 +449,16 @@
             <div style={{display:"flex",alignItems:"center",justifyContent:"center",minWidth:24,color:"#1e3a5f",fontSize:18,flexShrink:0,alignSelf:"center"}}>›</div>
             {[0,1,2,3].map(phaseIdx=><React.Fragment key={phaseIdx}><div style={{display:"flex",alignItems:"stretch"}}><div style={{display:"flex",flexDirection:"column",minWidth:155,background:PHASE_COLORS[phaseIdx],borderRadius:12,padding:"8px 6px",gap:10}}><div style={{fontSize:9,letterSpacing:"0.18em",color:"#64748b",textAlign:"center",borderBottom:"1px solid #1e2a3a",paddingBottom:6,marginBottom:2}}>{PHASE_LABELS[phaseIdx]}</div>{phaseNodes[phaseIdx+1].map(node=>{const cumIdx=selectedPath.indexOf(node.id);const cumP=cumIdx!==-1?pathProbs[cumIdx]:null;return <NodeCard key={node.id} node={node} inPath={isInPath(node.id)} highlighted={isHighlighted(node.id)} onClick={()=>handleNodeClick(node.id)} onHover={setHoveredNode} hovered={hoveredNode===node.id} cumProb={cumP} isLeaf={(node.children||[]).length===0} collapsed={collapsedNodes.has(node.id)} onToggleCollapse={toggleCollapse} hasChildren={(node.children||[]).length>0}/>})}</div></div>{phaseIdx<3 && <div style={{display:"flex",alignItems:"center",justifyContent:"center",minWidth:24,color:"#1e3a5f",fontSize:18,flexShrink:0,alignSelf:"center"}}>›</div>}</React.Fragment>)}
           </div>
+
+          {activeLeaf && nodes[activeLeaf] && nodes[activeLeaf].networth && (
+            <ProgramDetail node={nodes[activeLeaf]} />
+          )}
+
+          {hoveredNode && nodes[hoveredNode] && nodes[hoveredNode].note && !activeLeaf && (
+            <div style={{background:"#0c1220",border:"1px solid #1e2a3a",borderRadius:8,padding:"12px 16px",marginTop:16,fontSize:11,color:"#94a3b8",maxWidth:700}}>
+              {nodes[hoveredNode].note}
+            </div>
+          )}
         </div>
       );
     }
