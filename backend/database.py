@@ -188,6 +188,35 @@ def create_database():
         )
     """)
 
+    # User profile for probability calibration
+    # Single-row table (id=1). All fields have sensible defaults matching
+    # the current hardcoded user (L3 Embedded AI at Motive, Pakistan).
+    # The calibration engine applies multipliers based on these values
+    # to adjust edge probabilities, then re-normalizes child groups to 1.0.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_profile (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            years_experience REAL NOT NULL DEFAULT 2.0,
+            performance_rating TEXT NOT NULL DEFAULT 'strong',
+            risk_tolerance TEXT NOT NULL DEFAULT 'moderate',
+            available_savings_usd INTEGER NOT NULL DEFAULT 5000,
+            english_level TEXT NOT NULL DEFAULT 'professional',
+            gpa REAL DEFAULT 3.5,
+            gre_score INTEGER,
+            ielts_score REAL,
+            has_publications INTEGER NOT NULL DEFAULT 0,
+            has_freelance_profile INTEGER NOT NULL DEFAULT 0,
+            has_side_projects INTEGER NOT NULL DEFAULT 0,
+            quant_aptitude TEXT NOT NULL DEFAULT 'moderate',
+            current_salary_pkr INTEGER NOT NULL DEFAULT 220000
+        )
+    """)
+
+    # Insert default profile row if not exists
+    cursor.execute("""
+        INSERT OR IGNORE INTO user_profile (id) VALUES (1)
+    """)
+
     # ─── Indexes ─────────────────────────────────────────────────────────────
 
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_programs_field ON programs(field)")

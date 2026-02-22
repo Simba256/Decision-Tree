@@ -38,6 +38,13 @@
       return data.nodes;
     }
 
+    async function fetchEdges() {
+      const response = await fetch(`${API_BASE_URL}/edges`);
+      if (!response.ok) throw new Error(`Edges API error: ${response.status}`);
+      const data = await response.json();
+      return data.edges;
+    }
+
     async function fetchNetworthCompact(lifestyle = 'frugal', familyYear = 5) {
       const response = await fetch(`${API_BASE_URL}/networth?compact=true&lifestyle=${lifestyle}&family_year=${familyYear}`);
       if (!response.ok) throw new Error(`Networth API error: ${response.status}`);
@@ -47,6 +54,13 @@
     async function fetchProgramNetworth(programId, lifestyle = 'frugal', familyYear = 5) {
       const response = await fetch(`${API_BASE_URL}/networth/${programId}?lifestyle=${lifestyle}&family_year=${familyYear}`);
       if (!response.ok) throw new Error(`Networth API error: ${response.status}`);
+      return await response.json();
+    }
+
+    async function fetchCareerNetworth(lifestyle = 'frugal', familyYear = 3) {
+      const fy = Math.min(familyYear, 11); // Career paths use 1-11 (11=never), masters uses 1-13
+      const response = await fetch(`${API_BASE_URL}/networth/career?compact=true&leaf_only=true&lifestyle=${lifestyle}&family_year=${fy}`);
+      if (!response.ok) throw new Error(`Career Networth API error: ${response.status}`);
       return await response.json();
     }
 
@@ -62,8 +76,18 @@
     }
 
     // Tree Builder
-    function buildTree(programs, careerNodes, networthData) {
+    function buildTree(programs, careerNodes, networthData, careerNetworthData, edgesData) {
       const nodes = {};
+
+      // ═══════════════════════════════════════════════════════════
+      // BUILD EDGE MAP — edgeMap[source_id][target_id] = probability
+      // Used for conditional probability lookups in the UI
+      // ═══════════════════════════════════════════════════════════
+      const edgeMap = {};
+      for (const edge of (edgesData || [])) {
+        if (!edgeMap[edge.source_id]) edgeMap[edge.source_id] = {};
+        edgeMap[edge.source_id][edge.target_id] = edge.probability;
+      }
 
       // Build networth lookup by program_id
       const nwLookup = {};
@@ -73,6 +97,15 @@
         }
       }
       const baseline = networthData ? networthData.baseline : null;
+
+      // Build career networth lookup by node_id
+      const careerNwLookup = {};
+      if (careerNetworthData && careerNetworthData.results) {
+        for (const r of careerNetworthData.results) {
+          careerNwLookup[r.node_id] = r;
+        }
+      }
+      const careerBaseline = careerNetworthData ? careerNetworthData.baseline : null;
 
       function groupBy(array, key) {
         return array.reduce((result, item) => {
@@ -197,29 +230,82 @@
       }
 
       // ═══════════════════════════════════════════════════════════
+      // MASTERS PATH EDGES — add to edgeMap since these are
+      // dynamically built (not in DB edges table)
+      // root → masters_root uses node prob (0.15)
+      // masters_root → tiers use tierMeta probs (sum to 1.0)
+      // tier → fields use 1/numFields (uniform, sum to 1.0)
+      // field → programs use getProb (admission probability)
+      // ═══════════════════════════════════════════════════════════
+      if (!edgeMap['root']) edgeMap['root'] = {};
+      edgeMap['root']['masters_root'] = 0.15;
+
+      for (const [tierId, meta] of Object.entries(tierMeta)) {
+        if (!edgeMap['masters_root']) edgeMap['masters_root'] = {};
+        edgeMap['masters_root'][tierId] = meta.prob;
+
+        const tierNode = nodes[tierId];
+        if (tierNode) {
+          if (!edgeMap[tierId]) edgeMap[tierId] = {};
+          for (const fieldId of tierNode.children) {
+            const fieldNode = nodes[fieldId];
+            edgeMap[tierId][fieldId] = fieldNode ? fieldNode.prob : 1.0;
+
+            if (fieldNode) {
+              if (!edgeMap[fieldId]) edgeMap[fieldId] = {};
+              for (const progId of fieldNode.children) {
+                const progNode = nodes[progId];
+                edgeMap[fieldId][progId] = progNode ? progNode.prob : 0.5;
+              }
+            }
+          }
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════
       // ALL OTHER NODES — loaded from career_nodes API
       // Career progression, trading, startup, freelancing paths
       // ═══════════════════════════════════════════════════════════
       for (const cn of careerNodes) {
+        const cnw = careerNwLookup[cn.id];
+        const isLeaf = !(cn.children && cn.children.length > 0);
+        // Build enhanced salary display for leaf nodes with networth data
+        let salaryDisplay = cn.salary || '';
+        if (isLeaf && cnw) {
+          const benefitStr = `${cnw.net_benefit_k >= 0 ? '+' : ''}$${cnw.net_benefit_k.toFixed(0)}K benefit`;
+          const parts = [
+            cnw.y1_income_k && `Y1: $${cnw.y1_income_k.toFixed(0)}K`,
+            cnw.y10_income_k && `Y10: $${cnw.y10_income_k.toFixed(0)}K`,
+            benefitStr
+          ].filter(Boolean);
+          salaryDisplay = parts.join('\\n') || salaryDisplay;
+        }
+        // Build enhanced note for leaf nodes with networth data
+        let noteDisplay = cn.note || '';
+        if (isLeaf && cnw) {
+          noteDisplay = `${cn.note || cn.label}. 10yr Net Worth: $${cnw.path_networth_k.toFixed(0)}K. Net Benefit vs baseline: ${cnw.net_benefit_k >= 0 ? '+' : ''}$${cnw.net_benefit_k.toFixed(0)}K. Eff. Tax (Y10): ${(cnw.effective_tax_rate_y10 * 100).toFixed(0)}%.`;
+        }
         nodes[cn.id] = {
           id: cn.id,
           phase: cn.phase,
           label: cn.label,
-          salary: cn.salary || '',
+          salary: salaryDisplay,
           prob: cn.prob,
           color: cn.color,
-          note: cn.note || '',
+          note: noteDisplay,
           node_type: cn.node_type,
-          children: cn.children || []
+          children: cn.children || [],
+          networth: cnw || null
         };
       }
 
-      return nodes;
+      return { nodes, edgeMap };
     }
 
     // Main Component
     function CareerTreeV2() {
       const [nodes, setNodes] = useState(null);
+      const [edgeMap, setEdgeMap] = useState({});
       const [selectedPath, setSelectedPath] = useState([]);
       const [hoveredNode, setHoveredNode] = useState(null);
       const [activeLeaf, setActiveLeaf] = useState(null);
@@ -233,12 +319,16 @@
         async function load() {
           try {
             if (!(await checkHealth())) throw new Error('API not responding. Start backend: cd backend && python3 app.py');
-            const [programs, careerNodes, networthData] = await Promise.all([
+            const [programs, careerNodes, networthData, careerNetworthData, edgesData] = await Promise.all([
               fetchPrograms(),
               fetchCareerNodes(),
-              fetchNetworthCompact(lifestyle, familyYear)
+              fetchNetworthCompact(lifestyle, familyYear),
+              fetchCareerNetworth(lifestyle, familyYear),
+              fetchEdges()
             ]);
-            setNodes(buildTree(programs, careerNodes, networthData));
+            const treeData = buildTree(programs, careerNodes, networthData, careerNetworthData, edgesData);
+            setNodes(treeData.nodes);
+            setEdgeMap(treeData.edgeMap);
             setLoading(false);
           } catch (err) {
             setError(err.message);
@@ -317,7 +407,38 @@
       if (!nodes) return null;
 
       const phaseNodes = [-1, 0, 1, 2, 3].map(ph => Object.values(nodes).filter(n => n.phase === ph && isNodeVisible(n.id)));
-      const pathProbs = selectedPath.reduce((acc, id, i) => { acc.push((i === 0 ? 1 : acc[i-1]) * (nodes[id]?.prob || 1)); return acc; }, []);
+
+      // Helper: get edge probability for a parent→child transition
+      // Falls back to node.prob if no edge data exists
+      const getEdgeProb = (parentId, childId) => {
+        if (edgeMap[parentId] && edgeMap[parentId][childId] !== undefined) {
+          return edgeMap[parentId][childId];
+        }
+        return nodes[childId]?.prob || 1;
+      };
+
+      // Cumulative path probabilities using edge-based conditional probs
+      // For each node in selectedPath, find its parent (previous in path, or "root")
+      const pathProbs = selectedPath.reduce((acc, id, i) => {
+        const parentId = i === 0 ? 'root' : selectedPath[i - 1];
+        const edgeProb = getEdgeProb(parentId, id);
+        acc.push((i === 0 ? 1 : acc[i-1]) * edgeProb);
+        return acc;
+      }, []);
+
+      // Helper: determine which parent a node has in the current selectedPath
+      // Returns the parent node ID from selectedPath, or "root" if the node
+      // is a direct child of root, or null if no parent context is known
+      const getNodeParentInPath = (nodeId) => {
+        // Walk selectedPath to find which node has nodeId as a child
+        for (let i = selectedPath.length - 1; i >= 0; i--) {
+          const pathNode = nodes[selectedPath[i]];
+          if (pathNode && (pathNode.children || []).includes(nodeId)) return selectedPath[i];
+        }
+        // Check if root has this node as child
+        if (nodes.root && (nodes.root.children || []).includes(nodeId)) return 'root';
+        return null;
+      };
       const leafNode = activeLeaf ? nodes[activeLeaf] : null;
 
       // Detect which path is selected using node_type from API data
@@ -344,8 +465,10 @@
       }
       const PHASE_COLORS = ["#00e5ff22", "#00ff9f22", "#a29bfe22", "#fd79a822"];
 
-      const NodeCard = ({ node, inPath, highlighted, onClick, onHover, hovered, cumProb, isLeaf, collapsed, onToggleCollapse, hasChildren }) => {
+      const NodeCard = ({ node, inPath, highlighted, onClick, onHover, hovered, cumProb, edgeProb, isLeaf, collapsed, onToggleCollapse, hasChildren }) => {
         const getProbColor = (prob) => prob >= 0.55 ? "#00ff9f" : prob >= 0.35 ? "#fdcb6e" : "#ff7675";
+        // Use edge probability if available, fall back to node.prob
+        const displayProb = edgeProb !== null && edgeProb !== undefined ? edgeProb : node.prob;
         const nw = node.networth;
         const benefitColor = nw ? (nw.net_benefit_k >= 200 ? "#00ff9f" : nw.net_benefit_k >= 0 ? "#fdcb6e" : "#ff7675") : null;
         return (
@@ -359,7 +482,7 @@
               return <span key={i}>{line}{i < node.salary.split("\\n").length - 1 ? "\n" : ""}</span>;
             })}</div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6}}>
-              <div style={{fontSize:9,color:getProbColor(node.prob),background:`${getProbColor(node.prob)}18`,borderRadius:4,padding:"1px 5px"}}>{(node.prob*100).toFixed(0)}% branch</div>
+              <div style={{fontSize:9,color:getProbColor(displayProb),background:`${getProbColor(displayProb)}18`,borderRadius:4,padding:"1px 5px"}}>{(displayProb*100).toFixed(0)}% branch</div>
               {cumProb!==null && <div style={{fontSize:9,color:"#4a5568"}}>{(cumProb*100).toFixed(1)}% overall</div>}
             </div>
           </div>
@@ -407,6 +530,56 @@
         );
       };
 
+      // Career path detail panel (trading, startup, freelance, career)
+      const CareerNodeDetail = ({ node }) => {
+        const nw = node.networth;
+        if (!nw) return <div style={{background:"#0c1220",border:"1px solid #1e2a3a",borderRadius:12,padding:"20px",marginTop:20}}><div style={{color:"#94a3b8",fontSize:13}}>No net worth data available for this node.</div></div>;
+
+        const benefitColor = nw.net_benefit_k >= 200 ? "#00ff9f" : nw.net_benefit_k >= 0 ? "#fdcb6e" : "#ff7675";
+        const typeLabel = (nw.node_type || '').charAt(0).toUpperCase() + (nw.node_type || '').slice(1);
+        const typeColors = { trading: "#fdcb6e", startup: "#00ff9f", freelance: "#00e5ff", career: "#a29bfe" };
+        const typeColor = typeColors[nw.node_type] || "#94a3b8";
+
+        return (
+          <div style={{background:"#0c1220",border:"1px solid #1e2a3a",borderRadius:12,padding:"20px 24px",marginTop:20}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:16}}>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{fontSize:16,fontWeight:700,color:"#e8eaf6"}}>{(nw.label || node.label || '').replace(/\\n/g, ' ')}</div>
+                  <span style={{fontSize:10,background:`${typeColor}22`,color:typeColor,padding:"1px 8px",borderRadius:4,fontWeight:600}}>{typeLabel}</span>
+                </div>
+                {nw.note && <div style={{fontSize:12,color:"#94a3b8",marginTop:4,maxWidth:500}}>{nw.note}</div>}
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:24,fontWeight:700,color:benefitColor}}>{nw.net_benefit_k >= 0 ? "+" : ""}${nw.net_benefit_k.toFixed(0)}K</div>
+                <div style={{fontSize:10,color:"#64748b"}}>10yr net benefit vs baseline</div>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))",gap:12,marginTop:16}}>
+              {[
+                { label: "Y1 Income", value: `$${nw.y1_income_k.toFixed(0)}K/yr`, color: "#00e5ff" },
+                { label: "Y5 Income", value: `$${nw.y5_income_k.toFixed(0)}K/yr`, color: "#00e5ff" },
+                { label: "Y10 Income", value: `$${nw.y10_income_k.toFixed(0)}K/yr`, color: "#00e5ff" },
+                nw.initial_capital_k > 0 ? { label: "Initial Capital", value: `$${nw.initial_capital_k.toFixed(1)}K`, color: "#ff7675" } : null,
+                nw.ongoing_annual_k > 0 ? { label: "Ongoing Cost/yr", value: `$${nw.ongoing_annual_k.toFixed(1)}K`, color: "#ff7675" } : null,
+                { label: "10yr Savings", value: `$${nw.total_work_savings_k.toFixed(0)}K`, color: "#a29bfe" },
+                { label: "10yr Net Worth", value: `$${nw.path_networth_k.toFixed(0)}K`, color: "#a29bfe" },
+                { label: "Baseline NW", value: `$${nw.baseline_networth_k.toFixed(0)}K`, color: "#64748b" },
+                { label: "Eff. Tax (Y1)", value: `${(nw.effective_tax_rate_y1 * 100).toFixed(1)}%`, color: "#fdcb6e" },
+                { label: "Eff. Tax (Y10)", value: `${(nw.effective_tax_rate_y10 * 100).toFixed(1)}%`, color: "#fdcb6e" },
+                nw.income_floor_usd ? { label: "Income Floor", value: `$${nw.income_floor_usd}/mo`, color: "#94a3b8" } : null,
+                nw.income_ceiling_usd ? { label: "Income Ceiling", value: `$${nw.income_ceiling_usd}/mo`, color: "#94a3b8" } : null,
+              ].filter(Boolean).map((item, i) => (
+                <div key={i} style={{background:"#131c2e",borderRadius:8,padding:"8px 10px"}}>
+                  <div style={{fontSize:9,color:"#64748b",letterSpacing:"0.05em",marginBottom:3}}>{item.label}</div>
+                  <div style={{fontSize:13,fontWeight:600,color:item.color}}>{item.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      };
+
       return (
         <div style={{minHeight:"100vh",background:"#070b14",color:"#e8eaf6",fontFamily:"'DM Mono','Fira Code',monospace",padding:"24px 16px",overflowX:"auto"}}>
           <div style={{textAlign:"center",marginBottom:28}}>
@@ -431,27 +604,30 @@
                 <span style={{fontSize:12,fontWeight:700,color:"#fdcb6e",minWidth:20,textAlign:"center"}}>{familyYear <= 12 ? familyYear : "∞"}</span>
               </div>
               <div style={{fontSize:10,color:"#94a3b8"}}>
-                {familyYear === 13 ? "Never marry — single costs all 12 years" :
-                 familyYear === 1 ? `Year 1 — Family during study` :
-                 familyYear === 2 ? `Year 2 — Family in final study year` :
-                 familyYear === 3 ? `Year 3 — Family right after masters` :
-                 familyYear <= 5 ? `Year ${familyYear} — Family ${familyYear - 2}yr after masters` :
-                 `Year ${familyYear} — Family ${familyYear - 2}yr after masters`}
+                {familyYear === 13 ? "Never marry — single costs entire timeline" :
+                 familyYear === 1 ? `Year 1 — Family from the start` :
+                 familyYear === 2 ? `Year 2 — Family early on` :
+                 familyYear === 3 ? `Year 3 — Family after settling in` :
+                 `Year ${familyYear} — Family at year ${familyYear}`}
               </div>
             </div>
-            <div style={{fontSize:10,color:"#00ff9f",marginTop:8}}>✓ Connected to API · {lifestyle === 'frugal' ? 'Frugal' : 'Comfortable'} · Family {familyYear <= 12 ? `at Yr ${familyYear}` : 'Never'}</div>
+            <div style={{fontSize:10,color:"#00ff9f",marginTop:8}}>✓ Connected to API · Edge Probabilities · {lifestyle === 'frugal' ? 'Frugal' : 'Comfortable'} · Family {familyYear <= 12 ? `at Yr ${familyYear}` : 'Never'}</div>
           </div>
 
           <div style={{display:"flex",gap:0,alignItems:"flex-start",overflowX:"auto",paddingBottom:24,minWidth:"900px"}}>
             <div style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:140,paddingTop:60}}>
-              <NodeCard node={nodes.root} inPath={true} highlighted={true} onClick={()=>handleNodeClick("root")} onHover={setHoveredNode} hovered={hoveredNode==="root"} cumProb={1.0} collapsed={collapsedNodes.has("root")} onToggleCollapse={toggleCollapse} hasChildren={(nodes.root.children||[]).length>0}/>
+              <NodeCard node={nodes.root} inPath={true} highlighted={true} onClick={()=>handleNodeClick("root")} onHover={setHoveredNode} hovered={hoveredNode==="root"} cumProb={1.0} edgeProb={1.0} collapsed={collapsedNodes.has("root")} onToggleCollapse={toggleCollapse} hasChildren={(nodes.root.children||[]).length>0}/>
             </div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"center",minWidth:24,color:"#1e3a5f",fontSize:18,flexShrink:0,alignSelf:"center"}}>›</div>
-            {[0,1,2,3].map(phaseIdx=><React.Fragment key={phaseIdx}><div style={{display:"flex",alignItems:"stretch"}}><div style={{display:"flex",flexDirection:"column",minWidth:155,background:PHASE_COLORS[phaseIdx],borderRadius:12,padding:"8px 6px",gap:10}}><div style={{fontSize:9,letterSpacing:"0.18em",color:"#64748b",textAlign:"center",borderBottom:"1px solid #1e2a3a",paddingBottom:6,marginBottom:2}}>{PHASE_LABELS[phaseIdx]}</div>{phaseNodes[phaseIdx+1].map(node=>{const cumIdx=selectedPath.indexOf(node.id);const cumP=cumIdx!==-1?pathProbs[cumIdx]:null;return <NodeCard key={node.id} node={node} inPath={isInPath(node.id)} highlighted={isHighlighted(node.id)} onClick={()=>handleNodeClick(node.id)} onHover={setHoveredNode} hovered={hoveredNode===node.id} cumProb={cumP} isLeaf={(node.children||[]).length===0} collapsed={collapsedNodes.has(node.id)} onToggleCollapse={toggleCollapse} hasChildren={(node.children||[]).length>0}/>})}</div></div>{phaseIdx<3 && <div style={{display:"flex",alignItems:"center",justifyContent:"center",minWidth:24,color:"#1e3a5f",fontSize:18,flexShrink:0,alignSelf:"center"}}>›</div>}</React.Fragment>)}
+            {[0,1,2,3].map(phaseIdx=><React.Fragment key={phaseIdx}><div style={{display:"flex",alignItems:"stretch"}}><div style={{display:"flex",flexDirection:"column",minWidth:155,background:PHASE_COLORS[phaseIdx],borderRadius:12,padding:"8px 6px",gap:10}}><div style={{fontSize:9,letterSpacing:"0.18em",color:"#64748b",textAlign:"center",borderBottom:"1px solid #1e2a3a",paddingBottom:6,marginBottom:2}}>{PHASE_LABELS[phaseIdx]}</div>{phaseNodes[phaseIdx+1].map(node=>{const cumIdx=selectedPath.indexOf(node.id);const cumP=cumIdx!==-1?pathProbs[cumIdx]:null;const parentId=getNodeParentInPath(node.id);const eProb=parentId!==null?getEdgeProb(parentId,node.id):null;return <NodeCard key={node.id} node={node} inPath={isInPath(node.id)} highlighted={isHighlighted(node.id)} onClick={()=>handleNodeClick(node.id)} onHover={setHoveredNode} hovered={hoveredNode===node.id} cumProb={cumP} edgeProb={eProb} isLeaf={(node.children||[]).length===0} collapsed={collapsedNodes.has(node.id)} onToggleCollapse={toggleCollapse} hasChildren={(node.children||[]).length>0}/>})}</div></div>{phaseIdx<3 && <div style={{display:"flex",alignItems:"center",justifyContent:"center",minWidth:24,color:"#1e3a5f",fontSize:18,flexShrink:0,alignSelf:"center"}}>›</div>}</React.Fragment>)}
           </div>
 
-          {activeLeaf && nodes[activeLeaf] && nodes[activeLeaf].networth && (
+          {activeLeaf && nodes[activeLeaf] && nodes[activeLeaf].networth && nodes[activeLeaf].programData && (
             <ProgramDetail node={nodes[activeLeaf]} />
+          )}
+
+          {activeLeaf && nodes[activeLeaf] && nodes[activeLeaf].networth && !nodes[activeLeaf].programData && (
+            <CareerNodeDetail node={nodes[activeLeaf]} />
           )}
 
           {hoveredNode && nodes[hoveredNode] && nodes[hoveredNode].note && !activeLeaf && (

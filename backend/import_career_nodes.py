@@ -28,6 +28,11 @@ CAREER_NODES = [
         "color": "#00e5ff",
         "note": "~50–55% chance if strong performer. RSU allocation jumps ~3x. IPO equity becomes meaningful.",
         "children": ["p2_l4_staymotive", "p2_l4_remoteUSD", "p2_l4_switchlocal"],
+        "income_floor_usd": 1700,
+        "income_ceiling_usd": 2050,
+        "y1_income_usd": 20,
+        "y5_income_usd": 25,
+        "y10_income_usd": 30,
     },
     {
         "id": "p1_notpromoted_stay",
@@ -39,6 +44,11 @@ CAREER_NODES = [
         "color": "#ff9f43",
         "note": "Annual 10–15% increments. Risk of getting stuck. Good time to switch teams internally (ML Platform, CV) to reset promo clock.",
         "children": ["p2_np_teamswitch", "p2_np_motive_retry", "p2_np_remote"],
+        "income_floor_usd": 1100,
+        "income_ceiling_usd": 1170,
+        "y1_income_usd": 13,
+        "y5_income_usd": 17,
+        "y10_income_usd": 20,
     },
     {
         "id": "p1_switch_local",
@@ -50,6 +60,11 @@ CAREER_NODES = [
         "color": "#a29bfe",
         "note": "30–50% salary jump immediately. Lose Motive RSU vesting & IPO upside. Good option if promotion seems blocked.",
         "children": ["p2_local_promoted", "p2_local_stagnate", "p2_local_remote"],
+        "income_floor_usd": 1400,
+        "income_ceiling_usd": 1820,
+        "y1_income_usd": 17,
+        "y5_income_usd": 22,
+        "y10_income_usd": 28,
     },
     # ─── CAREER PATH: Phase 1 (Yr 2–4) — From Promoted ───
     {
@@ -62,6 +77,11 @@ CAREER_NODES = [
         "color": "#00e5ff",
         "note": "L4→L5 takes 2–4 years. If IPO happens here, RSU windfall possible. Stable but slower than remote.",
         "children": ["p3_l5_achieved", "p3_l5_stalled_motive"],
+        "income_floor_usd": 1950,
+        "income_ceiling_usd": 2260,
+        "y1_income_usd": 23,
+        "y5_income_usd": 30,
+        "y10_income_usd": 38,
     },
     {
         "id": "p2_l4_remoteUSD",
@@ -73,6 +93,11 @@ CAREER_NODES = [
         "color": "#00ff9f",
         "note": "5–8x salary jump. Motive L4 title + AI specialization = strong remote profile. 55–65% chance of landing within 6 months.",
         "children": ["p3_remote_senior", "p3_remote_plateau"],
+        "income_floor_usd": 3330,
+        "income_ceiling_usd": 6670,
+        "y1_income_usd": 40,
+        "y5_income_usd": 65,
+        "y10_income_usd": 90,
     },
     {
         "id": "p2_l4_switchlocal",
@@ -84,6 +109,11 @@ CAREER_NODES = [
         "color": "#fd79a8",
         "note": "Motive L4 credential opens Senior doors at Tier-1 local companies. Less upside than remote but stable.",
         "children": ["p3_local_senior_rise", "p3_local_switch_remote"],
+        "income_floor_usd": 2170,
+        "income_ceiling_usd": 3040,
+        "y1_income_usd": 26,
+        "y5_income_usd": 33,
+        "y10_income_usd": 42,
     },
     # ─── CAREER PATH: Phase 1 (Yr 2–4) — From Not Promoted ───
     {
@@ -96,6 +126,11 @@ CAREER_NODES = [
         "color": "#fdcb6e",
         "note": "Lateral move to ML Platform or CV team. Resets promotion narrative. 55–65% chance of L4 within 18 months from new team.",
         "children": ["p3_teamswitch_l4", "p3_teamswitch_stuck"],
+        "income_floor_usd": 1170,
+        "income_ceiling_usd": 1300,
+        "y1_income_usd": 14,
+        "y5_income_usd": 20,
+        "y10_income_usd": 26,
     },
     {
         "id": "p2_np_motive_retry",
@@ -107,6 +142,11 @@ CAREER_NODES = [
         "color": "#e17055",
         "note": "Risky path. Same team, same manager. Promotion retry has 35–45% chance. If fails again, strong signal to leave.",
         "children": ["p3_retry_promoted", "p3_retry_failed_leave"],
+        "income_floor_usd": 1130,
+        "income_ceiling_usd": 1240,
+        "y1_income_usd": 14,
+        "y5_income_usd": 18,
+        "y10_income_usd": 22,
     },
     {
         "id": "p2_np_remote",
@@ -118,6 +158,11 @@ CAREER_NODES = [
         "color": "#55efc4",
         "note": "Harder without L4 but doable on platforms like Turing with portfolio. 35–45% success rate. Lower USD band than L4 route.",
         "children": ["p3_remote_l3_grows", "p3_remote_l3_contract"],
+        "income_floor_usd": 2250,
+        "income_ceiling_usd": 3580,
+        "y1_income_usd": 27,
+        "y5_income_usd": 40,
+        "y10_income_usd": 55,
     },
     # ─── CAREER PATH: Phase 1 (Yr 2–4) — From Switch Local ───
     {
@@ -130,6 +175,11 @@ CAREER_NODES = [
         "color": "#a29bfe",
         "note": "Senior title at Tier-1 local company. Good CV credential for remote applications. 2 years typical.",
         "children": ["p3_local_stay_staff", "p3_local_pivot_remote"],
+        "income_floor_usd": 2170,
+        "income_ceiling_usd": 2820,
+        "y1_income_usd": 26,
+        "y5_income_usd": 35,
+        "y10_income_usd": 45,
     },
     {
         "id": "p2_local_stagnate",
@@ -141,6 +191,11 @@ CAREER_NODES = [
         "color": "#636e72",
         "note": "Common at mid-size companies. If stagnating at year 3, the only move is remote or another company hop.",
         "children": ["p3_stagnate_remote", "p3_stagnate_hop"],
+        "income_floor_usd": 1520,
+        "income_ceiling_usd": 1740,
+        "y1_income_usd": 18,
+        "y5_income_usd": 22,
+        "y10_income_usd": 26,
     },
     {
         "id": "p2_local_remote",
@@ -152,6 +207,11 @@ CAREER_NODES = [
         "color": "#00cec9",
         "note": "Using new company's Senior title to jump to remote. Effective strategy. 50–60% landing rate.",
         "children": ["p3_remote_mid_climb", "p3_remote_mid_stable"],
+        "income_floor_usd": 2670,
+        "income_ceiling_usd": 4580,
+        "y1_income_usd": 32,
+        "y5_income_usd": 48,
+        "y10_income_usd": 65,
     },
     # ─── CAREER PATH: Phase 2 (Yr 4–7) ───
     {
@@ -164,6 +224,11 @@ CAREER_NODES = [
         "color": "#00e5ff",
         "note": "Strong performer track. IPO RSU could add $10–30K one-time. Local ceiling approaching.",
         "children": ["p4_motive_staff", "p4_l5_goremote"],
+        "income_floor_usd": 3470,
+        "income_ceiling_usd": 3910,
+        "y1_income_usd": 42,
+        "y5_income_usd": 50,
+        "y10_income_usd": 60,
     },
     {
         "id": "p3_l5_stalled_motive",
@@ -175,6 +240,11 @@ CAREER_NODES = [
         "color": "#fab1a0",
         "note": "Majority of L4 engineers don't reach L5 within 4 years. This is the most common path. Time to go remote.",
         "children": ["p4_l4stall_remote", "p4_l4stall_local_sr"],
+        "income_floor_usd": 2260,
+        "income_ceiling_usd": 2610,
+        "y1_income_usd": 27,
+        "y5_income_usd": 33,
+        "y10_income_usd": 40,
     },
     {
         "id": "p3_remote_senior",
@@ -186,6 +256,11 @@ CAREER_NODES = [
         "color": "#00ff9f",
         "note": "Moved from platform (Turing) to direct employment. Full benefits, equity, stable. Best risk-adjusted remote path.",
         "children": ["p4_remote_staff", "p4_remote_stable_senior"],
+        "income_floor_usd": 5830,
+        "income_ceiling_usd": 9170,
+        "y1_income_usd": 70,
+        "y5_income_usd": 95,
+        "y10_income_usd": 130,
     },
     {
         "id": "p3_remote_plateau",
@@ -197,6 +272,11 @@ CAREER_NODES = [
         "color": "#fdcb6e",
         "note": "Platform contract gaps or rate stagnation. Common with Turing/Toptal. Solution: build direct client relationships or switch platforms.",
         "children": ["p4_platform_pivot", "p4_platform_direct"],
+        "income_floor_usd": 3470,
+        "income_ceiling_usd": 4780,
+        "y1_income_usd": 42,
+        "y5_income_usd": 52,
+        "y10_income_usd": 62,
     },
     {
         "id": "p3_local_senior_rise",
@@ -208,6 +288,11 @@ CAREER_NODES = [
         "color": "#fd79a8",
         "note": "Top-tier local comp. Still 2–3x below remote but strong PKR purchasing power. Good if lifestyle suits local.",
         "children": ["p4_local_staff", "p4_local_sr_remote"],
+        "income_floor_usd": 3040,
+        "income_ceiling_usd": 3910,
+        "y1_income_usd": 36,
+        "y5_income_usd": 45,
+        "y10_income_usd": 55,
     },
     {
         "id": "p3_local_switch_remote",
@@ -219,6 +304,11 @@ CAREER_NODES = [
         "color": "#00cec9",
         "note": "Using local Senior title to land remote role. Highly effective — Senior at Securiti/Motive is strong signal.",
         "children": ["p4_remote_sr_direct", "p4_remote_sr_stable"],
+        "income_floor_usd": 5000,
+        "income_ceiling_usd": 8330,
+        "y1_income_usd": 60,
+        "y5_income_usd": 85,
+        "y10_income_usd": 120,
     },
     {
         "id": "p3_teamswitch_l4",
@@ -230,6 +320,11 @@ CAREER_NODES = [
         "color": "#fdcb6e",
         "note": "Team switch paid off. Now at L4 by year 4. Slightly behind original promoted path but back on track.",
         "children": ["p4_l4late_remote", "p4_l4late_motive"],
+        "income_floor_usd": 1650,
+        "income_ceiling_usd": 2060,
+        "y1_income_usd": 20,
+        "y5_income_usd": 28,
+        "y10_income_usd": 38,
     },
     {
         "id": "p3_teamswitch_stuck",
@@ -241,6 +336,11 @@ CAREER_NODES = [
         "color": "#b2bec3",
         "note": "By year 4, if still not at solid L4, Motive is no longer the right vehicle. Remote or local hop is urgent.",
         "children": ["p4_stuck_emergency_remote", "p4_stuck_local_hop"],
+        "income_floor_usd": 1260,
+        "income_ceiling_usd": 1480,
+        "y1_income_usd": 15,
+        "y5_income_usd": 19,
+        "y10_income_usd": 24,
     },
     {
         "id": "p3_retry_promoted",
@@ -252,6 +352,11 @@ CAREER_NODES = [
         "color": "#e17055",
         "note": "Late L4. Lost 1–1.5 years vs. original track. Consider fast-tracking remote from here.",
         "children": ["p4_l4late_remote", "p4_l4late_motive"],
+        "income_floor_usd": 1740,
+        "income_ceiling_usd": 2060,
+        "y1_income_usd": 21,
+        "y5_income_usd": 28,
+        "y10_income_usd": 38,
     },
     {
         "id": "p3_retry_failed_leave",
@@ -263,6 +368,11 @@ CAREER_NODES = [
         "color": "#d63031",
         "note": "Clear signal: Motive wasn't the right fit or wrong manager. External jump with 2+ years AI exp yields 40–60% raise.",
         "children": ["p4_exited_motive_remote", "p4_exited_motive_local"],
+        "income_floor_usd": 1520,
+        "income_ceiling_usd": 2170,
+        "y1_income_usd": 18,
+        "y5_income_usd": 28,
+        "y10_income_usd": 40,
     },
     {
         "id": "p3_remote_l3_grows",
@@ -274,6 +384,11 @@ CAREER_NODES = [
         "color": "#55efc4",
         "note": "Proved value remotely without L4 title. Rate negotiations possible after 12–18 months of strong delivery.",
         "children": ["p4_remote_mid_senior", "p4_remote_mid_stable2"],
+        "income_floor_usd": 2920,
+        "income_ceiling_usd": 4580,
+        "y1_income_usd": 35,
+        "y5_income_usd": 50,
+        "y10_income_usd": 70,
     },
     {
         "id": "p3_remote_l3_contract",
@@ -285,6 +400,11 @@ CAREER_NODES = [
         "color": "#636e72",
         "note": "L3 without portfolio struggles on premium platforms. Better to return to local job for 6–12 months and rebuild.",
         "children": ["p4_contract_rebuild", "p4_contract_grind"],
+        "income_floor_usd": 2080,
+        "income_ceiling_usd": 2920,
+        "y1_income_usd": 25,
+        "y5_income_usd": 33,
+        "y10_income_usd": 42,
     },
     {
         "id": "p3_local_stay_staff",
@@ -296,6 +416,11 @@ CAREER_NODES = [
         "color": "#a29bfe",
         "note": "Senior/Staff at Tier-1 local. High PKR comp, leadership experience, but remote gap growing.",
         "children": ["p4_local_staff", "p4_local_sr_remote"],
+        "income_floor_usd": 3260,
+        "income_ceiling_usd": 4130,
+        "y1_income_usd": 39,
+        "y5_income_usd": 48,
+        "y10_income_usd": 58,
     },
     {
         "id": "p3_local_pivot_remote",
@@ -307,6 +432,11 @@ CAREER_NODES = [
         "color": "#00cec9",
         "note": "Senior AI title at reputable local company is strong remote signal. 55–65% chance of landing.",
         "children": ["p4_remote_sr_direct", "p4_remote_sr_stable"],
+        "income_floor_usd": 4580,
+        "income_ceiling_usd": 7500,
+        "y1_income_usd": 55,
+        "y5_income_usd": 78,
+        "y10_income_usd": 110,
     },
     {
         "id": "p3_stagnate_remote",
@@ -318,6 +448,11 @@ CAREER_NODES = [
         "color": "#00cec9",
         "note": "Pivoting remote from a stagnating local role. Portfolio quality and AI specialization are key differentiators.",
         "children": ["p4_platform_pivot", "p4_remote_stable_senior"],
+        "income_floor_usd": 3040,
+        "income_ceiling_usd": 6080,
+        "y1_income_usd": 36,
+        "y5_income_usd": 55,
+        "y10_income_usd": 78,
     },
     {
         "id": "p3_stagnate_hop",
@@ -329,6 +464,11 @@ CAREER_NODES = [
         "color": "#b2bec3",
         "note": "Another local hop. Incrementally better but ceiling remains. Remote is still the long-term path.",
         "children": ["p4_local_staff", "p4_local_sr_remote"],
+        "income_floor_usd": 1950,
+        "income_ceiling_usd": 2610,
+        "y1_income_usd": 23,
+        "y5_income_usd": 30,
+        "y10_income_usd": 40,
     },
     {
         "id": "p3_remote_mid_climb",
@@ -340,6 +480,11 @@ CAREER_NODES = [
         "color": "#00cec9",
         "note": "Steady remote career growth. Building direct employer relationships. High trajectory.",
         "children": ["p4_remote_staff", "p4_remote_stable_senior"],
+        "income_floor_usd": 4580,
+        "income_ceiling_usd": 7080,
+        "y1_income_usd": 55,
+        "y5_income_usd": 78,
+        "y10_income_usd": 105,
     },
     {
         "id": "p3_remote_mid_stable",
@@ -351,6 +496,11 @@ CAREER_NODES = [
         "color": "#74b9ff",
         "note": "Good income but plateaued. Need specialization uplift (LLM/GenAI) to break to senior tier.",
         "children": ["p4_platform_pivot", "p4_platform_direct"],
+        "income_floor_usd": 3330,
+        "income_ceiling_usd": 4580,
+        "y1_income_usd": 40,
+        "y5_income_usd": 50,
+        "y10_income_usd": 60,
     },
     # ─── CAREER PATH: Phase 3 (Yr 7–10) — Final outcomes ───
     {
@@ -363,6 +513,11 @@ CAREER_NODES = [
         "color": "#00e5ff",
         "note": "Best local outcome. Rare — fewer than 5 Staff engineers in Motive Pakistan. IPO windfall could be $50–150K if timing is right.",
         "children": [],
+        "income_floor_usd": 5210,
+        "income_ceiling_usd": 6520,
+        "y1_income_usd": 55,
+        "y5_income_usd": 65,
+        "y10_income_usd": 75,
     },
     {
         "id": "p4_l5_goremote",
@@ -374,6 +529,11 @@ CAREER_NODES = [
         "color": "#00ff9f",
         "note": "Motive L5 + 7 years AI exp is extremely competitive remotely. Near-guaranteed $100K+ role. This is the jackpot path.",
         "children": [],
+        "income_floor_usd": 8330,
+        "income_ceiling_usd": 12500,
+        "y1_income_usd": 100,
+        "y5_income_usd": 135,
+        "y10_income_usd": 175,
     },
     {
         "id": "p4_l4stall_remote",
@@ -385,6 +545,11 @@ CAREER_NODES = [
         "color": "#55efc4",
         "note": "Stalled L4 uses Motive brand to go remote. Still excellent outcome. 5–8 years local AI exp is strong.",
         "children": [],
+        "income_floor_usd": 5830,
+        "income_ceiling_usd": 8330,
+        "y1_income_usd": 70,
+        "y5_income_usd": 90,
+        "y10_income_usd": 115,
     },
     {
         "id": "p4_l4stall_local_sr",
@@ -396,6 +561,11 @@ CAREER_NODES = [
         "color": "#fdcb6e",
         "note": "Using L4 Motive to get Senior elsewhere. Good PKR income but remote gap widens. Consider remote by year 10.",
         "children": [],
+        "income_floor_usd": 3040,
+        "income_ceiling_usd": 4130,
+        "y1_income_usd": 36,
+        "y5_income_usd": 45,
+        "y10_income_usd": 55,
     },
     {
         "id": "p4_remote_staff",
@@ -407,6 +577,11 @@ CAREER_NODES = [
         "color": "#00ff9f",
         "note": "Best remote outcome. Direct employment at US/EU scale-up. Full benefits, equity, stock options.",
         "children": [],
+        "income_floor_usd": 10000,
+        "income_ceiling_usd": 15000,
+        "y1_income_usd": 120,
+        "y5_income_usd": 155,
+        "y10_income_usd": 200,
     },
     {
         "id": "p4_remote_stable_senior",
@@ -418,6 +593,11 @@ CAREER_NODES = [
         "color": "#74b9ff",
         "note": "Solid, stable senior remote role. Excellent PKR purchasing power. This outcome alone beats every local path.",
         "children": [],
+        "income_floor_usd": 6670,
+        "income_ceiling_usd": 9170,
+        "y1_income_usd": 80,
+        "y5_income_usd": 100,
+        "y10_income_usd": 125,
     },
     {
         "id": "p4_platform_pivot",
@@ -429,6 +609,11 @@ CAREER_NODES = [
         "color": "#81ecec",
         "note": "Moved from Turing/Toptal to direct employment. Stability improves dramatically. Good long-term position.",
         "children": [],
+        "income_floor_usd": 5830,
+        "income_ceiling_usd": 7920,
+        "y1_income_usd": 70,
+        "y5_income_usd": 88,
+        "y10_income_usd": 110,
     },
     {
         "id": "p4_platform_direct",
@@ -440,6 +625,11 @@ CAREER_NODES = [
         "color": "#b2bec3",
         "note": "Contract-based remote. Decent income but variable. Consider direct outreach to convert to employment.",
         "children": [],
+        "income_floor_usd": 4170,
+        "income_ceiling_usd": 5830,
+        "y1_income_usd": 50,
+        "y5_income_usd": 62,
+        "y10_income_usd": 75,
     },
     {
         "id": "p4_local_staff",
@@ -451,6 +641,11 @@ CAREER_NODES = [
         "color": "#a29bfe",
         "note": "Top of local ladder. Securiti/10Pearls Staff level. Strong local prestige and comp. Remote option always open.",
         "children": [],
+        "income_floor_usd": 4350,
+        "income_ceiling_usd": 6090,
+        "y1_income_usd": 52,
+        "y5_income_usd": 65,
+        "y10_income_usd": 78,
     },
     {
         "id": "p4_local_sr_remote",
@@ -462,6 +657,11 @@ CAREER_NODES = [
         "color": "#00cec9",
         "note": "Going remote at year 7–10 with 8+ years local AI exp. Always achievable. The remote window never closes for AI engineers.",
         "children": [],
+        "income_floor_usd": 5830,
+        "income_ceiling_usd": 8330,
+        "y1_income_usd": 70,
+        "y5_income_usd": 90,
+        "y10_income_usd": 115,
     },
     {
         "id": "p4_l4late_remote",
@@ -473,6 +673,11 @@ CAREER_NODES = [
         "color": "#55efc4",
         "note": "Delayed but still solid remote landing. 6+ years AI exp compensates for slower internal track.",
         "children": [],
+        "income_floor_usd": 4580,
+        "income_ceiling_usd": 6670,
+        "y1_income_usd": 55,
+        "y5_income_usd": 72,
+        "y10_income_usd": 92,
     },
     {
         "id": "p4_l4late_motive",
@@ -484,6 +689,11 @@ CAREER_NODES = [
         "color": "#fab1a0",
         "note": "Late L5 attempt. Possible but the comp gap vs remote has widened to 3–4x. Hard to justify staying.",
         "children": [],
+        "income_floor_usd": 3040,
+        "income_ceiling_usd": 3910,
+        "y1_income_usd": 36,
+        "y5_income_usd": 45,
+        "y10_income_usd": 55,
     },
     {
         "id": "p4_stuck_emergency_remote",
@@ -495,6 +705,11 @@ CAREER_NODES = [
         "color": "#fdcb6e",
         "note": "Even from a stalled position, 4+ years AI exp is enough for remote. Lower band but still 4–6x current.",
         "children": [],
+        "income_floor_usd": 3330,
+        "income_ceiling_usd": 5420,
+        "y1_income_usd": 40,
+        "y5_income_usd": 55,
+        "y10_income_usd": 72,
     },
     {
         "id": "p4_stuck_local_hop",
@@ -506,6 +721,11 @@ CAREER_NODES = [
         "color": "#636e72",
         "note": "Multiple hops without leveling up. Diminishing returns. Strong signal to invest in remote skills.",
         "children": [],
+        "income_floor_usd": 1740,
+        "income_ceiling_usd": 2390,
+        "y1_income_usd": 21,
+        "y5_income_usd": 26,
+        "y10_income_usd": 32,
     },
     {
         "id": "p4_exited_motive_remote",
@@ -517,6 +737,11 @@ CAREER_NODES = [
         "color": "#00cec9",
         "note": "'Failed' at Motive but 4+ years AI exp at a well-known company is still great remote profile.",
         "children": [],
+        "income_floor_usd": 4580,
+        "income_ceiling_usd": 7080,
+        "y1_income_usd": 55,
+        "y5_income_usd": 75,
+        "y10_income_usd": 98,
     },
     {
         "id": "p4_exited_motive_local",
@@ -528,6 +753,11 @@ CAREER_NODES = [
         "color": "#b2bec3",
         "note": "Motive experience opens doors at Tier-2 companies as Senior. Solid PKR income.",
         "children": [],
+        "income_floor_usd": 2170,
+        "income_ceiling_usd": 3040,
+        "y1_income_usd": 26,
+        "y5_income_usd": 33,
+        "y10_income_usd": 42,
     },
     {
         "id": "p4_remote_sr_direct",
@@ -539,6 +769,11 @@ CAREER_NODES = [
         "color": "#00ff9f",
         "note": "Direct employment at US/EU company at Staff/Senior level. Equity, benefits, growth. Excellent outcome.",
         "children": [],
+        "income_floor_usd": 8330,
+        "income_ceiling_usd": 11670,
+        "y1_income_usd": 100,
+        "y5_income_usd": 130,
+        "y10_income_usd": 165,
     },
     {
         "id": "p4_remote_sr_stable",
@@ -550,6 +785,11 @@ CAREER_NODES = [
         "color": "#74b9ff",
         "note": "Stable senior remote role. Great PKR income. Lower stress than staff-track. Excellent lifestyle balance.",
         "children": [],
+        "income_floor_usd": 6250,
+        "income_ceiling_usd": 8330,
+        "y1_income_usd": 75,
+        "y5_income_usd": 92,
+        "y10_income_usd": 115,
     },
     {
         "id": "p4_remote_mid_senior",
@@ -561,6 +801,11 @@ CAREER_NODES = [
         "color": "#81ecec",
         "note": "Proved remote value from L3. Grown to senior. Shows hustle and execution — valued traits remotely.",
         "children": [],
+        "income_floor_usd": 5830,
+        "income_ceiling_usd": 7920,
+        "y1_income_usd": 70,
+        "y5_income_usd": 88,
+        "y10_income_usd": 110,
     },
     {
         "id": "p4_remote_mid_stable2",
@@ -572,6 +817,11 @@ CAREER_NODES = [
         "color": "#b2bec3",
         "note": "Stable but lower remote income. LLM/GenAI specialization would break through to senior tier.",
         "children": [],
+        "income_floor_usd": 3750,
+        "income_ceiling_usd": 5420,
+        "y1_income_usd": 45,
+        "y5_income_usd": 58,
+        "y10_income_usd": 72,
     },
     {
         "id": "p4_contract_rebuild",
@@ -583,6 +833,11 @@ CAREER_NODES = [
         "color": "#fdcb6e",
         "note": "Took step back locally for 6–12 months, rebuilt portfolio, relaunched remote at higher rate.",
         "children": [],
+        "income_floor_usd": 4580,
+        "income_ceiling_usd": 6670,
+        "y1_income_usd": 55,
+        "y5_income_usd": 72,
+        "y10_income_usd": 92,
     },
     {
         "id": "p4_contract_grind",
@@ -594,6 +849,11 @@ CAREER_NODES = [
         "color": "#636e72",
         "note": "Survived on contract work but not thriving. Still 3–4x current salary but far below potential.",
         "children": [],
+        "income_floor_usd": 2500,
+        "income_ceiling_usd": 3750,
+        "y1_income_usd": 30,
+        "y5_income_usd": 40,
+        "y10_income_usd": 50,
     },
     # ═══════════════════════════════════════════════════════════
     # TRADING PATH
@@ -609,6 +869,13 @@ CAREER_NODES = [
         "color": "#f39c12",
         "note": "Keep job, learn and trade evenings/weekends. Start with small capital ($500–2K). 6–12 months learning curve before any consistency.",
         "children": ["p2_trade_crypto", "p2_trade_algo", "p2_trade_stocks"],
+        "income_floor_usd": 960,
+        "income_ceiling_usd": 960,
+        "initial_capital_usd": 1000,
+        "ongoing_cost_usd": 50,
+        "y1_income_usd": 11,
+        "y5_income_usd": 11,
+        "y10_income_usd": 11,
     },
     # ─── Phase 1: Trading Specializations ───
     {
@@ -621,6 +888,13 @@ CAREER_NODES = [
         "color": "#f39c12",
         "note": "High volatility = high risk. 24/7 markets. Most retail traders lose money in first 2 years. Leverage is dangerous. Need strict risk management.",
         "children": ["p3_trade_profitable", "p3_trade_breakeven", "p3_trade_loss"],
+        "income_floor_usd": 1170,
+        "income_ceiling_usd": 1610,
+        "initial_capital_usd": 2000,
+        "ongoing_cost_usd": 30,
+        "y1_income_usd": 14,
+        "y5_income_usd": 19,
+        "y10_income_usd": 19,
     },
     {
         "id": "p2_trade_algo",
@@ -632,6 +906,13 @@ CAREER_NODES = [
         "color": "#f39c12",
         "note": "Leverage AI/ML skills to build automated strategies. Backtesting is easy, live trading is hard. Edge decays. Infrastructure costs. Best synergy with your skillset.",
         "children": ["p3_trade_algo_edge", "p3_trade_breakeven", "p3_trade_loss"],
+        "income_floor_usd": 1390,
+        "income_ceiling_usd": 2260,
+        "initial_capital_usd": 5000,
+        "ongoing_cost_usd": 200,
+        "y1_income_usd": 17,
+        "y5_income_usd": 27,
+        "y10_income_usd": 27,
     },
     {
         "id": "p2_trade_stocks",
@@ -643,6 +924,13 @@ CAREER_NODES = [
         "color": "#f39c12",
         "note": "Swing trading, options strategies (covered calls, spreads). Lower volatility than crypto. Requires $5–20K capital for meaningful returns. Tax implications vary.",
         "children": ["p3_trade_profitable", "p3_trade_breakeven", "p3_trade_loss"],
+        "income_floor_usd": 1090,
+        "income_ceiling_usd": 1390,
+        "initial_capital_usd": 10000,
+        "ongoing_cost_usd": 50,
+        "y1_income_usd": 13,
+        "y5_income_usd": 17,
+        "y10_income_usd": 17,
     },
     # ─── Phase 2: Trading Outcomes ───
     {
@@ -655,6 +943,13 @@ CAREER_NODES = [
         "color": "#f39c12",
         "note": "Top 10–15% of traders. Consistent monthly returns of 5–15%. Can scale with more capital. Key: risk management and emotional discipline.",
         "children": ["p4_trade_fulltime", "p4_trade_sideincome"],
+        "income_floor_usd": 2170,
+        "income_ceiling_usd": 6520,
+        "initial_capital_usd": 15000,
+        "ongoing_cost_usd": 100,
+        "y1_income_usd": 26,
+        "y5_income_usd": 60,
+        "y10_income_usd": 78,
     },
     {
         "id": "p3_trade_algo_edge",
@@ -666,6 +961,13 @@ CAREER_NODES = [
         "color": "#f39c12",
         "note": "Rare but powerful. ML-based edge in market microstructure, sentiment, or arbitrage. Edge decays — constant iteration needed. Could lead to quant fund role.",
         "children": ["p4_trade_fulltime", "p4_trade_quant_fund"],
+        "income_floor_usd": 3470,
+        "income_ceiling_usd": 8700,
+        "initial_capital_usd": 25000,
+        "ongoing_cost_usd": 500,
+        "y1_income_usd": 42,
+        "y5_income_usd": 85,
+        "y10_income_usd": 104,
     },
     {
         "id": "p3_trade_breakeven",
@@ -677,6 +979,13 @@ CAREER_NODES = [
         "color": "#b2bec3",
         "note": "Most common outcome. Not losing but not making real money. Trading becomes a hobby/learning experience. Time may be better spent on career or startup.",
         "children": ["p4_trade_sideincome", "p4_trade_quit"],
+        "income_floor_usd": 960,
+        "income_ceiling_usd": 1300,
+        "initial_capital_usd": 5000,
+        "ongoing_cost_usd": 30,
+        "y1_income_usd": 11,
+        "y5_income_usd": 14,
+        "y10_income_usd": 16,
     },
     {
         "id": "p3_trade_loss",
@@ -688,6 +997,13 @@ CAREER_NODES = [
         "color": "#d63031",
         "note": "60–80% of retail traders lose money. Especially common with leverage, crypto, and no risk management. Expensive lesson but recoverable if you kept your job.",
         "children": ["p4_trade_quit", "p4_trade_restart"],
+        "income_floor_usd": 960,
+        "income_ceiling_usd": 960,
+        "initial_capital_usd": 0,
+        "ongoing_cost_usd": 0,
+        "y1_income_usd": 11,
+        "y5_income_usd": 11,
+        "y10_income_usd": 11,
     },
     # ─── Phase 3: Trading Final Outcomes ───
     {
@@ -700,6 +1016,13 @@ CAREER_NODES = [
         "color": "#f39c12",
         "note": "Quit job, trade full-time or start small fund. Extremely rare outcome. Need 2+ years of consistent track record and $50K+ capital. High stress, no safety net.",
         "children": [],
+        "income_floor_usd": 7000,
+        "income_ceiling_usd": 22000,
+        "initial_capital_usd": 50000,
+        "ongoing_cost_usd": 500,
+        "y1_income_usd": 84,
+        "y5_income_usd": 180,
+        "y10_income_usd": 264,
     },
     {
         "id": "p4_trade_quant_fund",
@@ -711,6 +1034,13 @@ CAREER_NODES = [
         "color": "#f39c12",
         "note": "Algo trading track record + AI/ML skills = strong profile for prop trading firms. Jane Street, Two Sigma, or remote quant roles. Very competitive.",
         "children": [],
+        "income_floor_usd": 7080,
+        "income_ceiling_usd": 14580,
+        "initial_capital_usd": 0,
+        "ongoing_cost_usd": 0,
+        "y1_income_usd": 85,
+        "y5_income_usd": 140,
+        "y10_income_usd": 200,
     },
     {
         "id": "p4_trade_sideincome",
@@ -722,6 +1052,13 @@ CAREER_NODES = [
         "color": "#74b9ff",
         "note": "Best risk-adjusted outcome. Keep career for stability, trade for supplemental income. 2–5 hours/week once systems are in place.",
         "children": [],
+        "income_floor_usd": 1830,
+        "income_ceiling_usd": 3130,
+        "initial_capital_usd": 10000,
+        "ongoing_cost_usd": 50,
+        "y1_income_usd": 22,
+        "y5_income_usd": 34,
+        "y10_income_usd": 38,
     },
     {
         "id": "p4_trade_quit",
@@ -733,6 +1070,13 @@ CAREER_NODES = [
         "color": "#636e72",
         "note": "Lost capital or time. Not a failure — learned risk management, markets, and discipline. These skills transfer to investing and financial planning.",
         "children": [],
+        "income_floor_usd": 960,
+        "income_ceiling_usd": 960,
+        "initial_capital_usd": 0,
+        "ongoing_cost_usd": 0,
+        "y1_income_usd": 11,
+        "y5_income_usd": 11,
+        "y10_income_usd": 11,
     },
     {
         "id": "p4_trade_restart",
@@ -744,6 +1088,13 @@ CAREER_NODES = [
         "color": "#fdcb6e",
         "note": "Lost money but learned lessons. Restart with smaller position sizes, better risk management. Many successful traders blew up their first account.",
         "children": [],
+        "income_floor_usd": 960,
+        "income_ceiling_usd": 1090,
+        "initial_capital_usd": 2000,
+        "ongoing_cost_usd": 30,
+        "y1_income_usd": 12,
+        "y5_income_usd": 13,
+        "y10_income_usd": 15,
     },
     # ═══════════════════════════════════════════════════════════
     # STARTUP PATH
@@ -759,6 +1110,13 @@ CAREER_NODES = [
         "color": "#e84393",
         "note": "Start building MVP nights/weekends. Ship fast, validate with real users. Most important: pick a problem you understand deeply. AI/ML expertise is your moat.",
         "children": ["p2_startup_ai_saas", "p2_startup_devtools", "p2_startup_general"],
+        "income_floor_usd": 960,
+        "income_ceiling_usd": 960,
+        "initial_capital_usd": 200,
+        "ongoing_cost_usd": 50,
+        "y1_income_usd": 11,
+        "y5_income_usd": 11,
+        "y10_income_usd": 11,
     },
     # ─── Phase 1: Startup Specializations ───
     {
@@ -776,6 +1134,13 @@ CAREER_NODES = [
             "p3_startup_slow",
             "p3_startup_failed",
         ],
+        "income_floor_usd": 960,
+        "income_ceiling_usd": 1170,
+        "initial_capital_usd": 500,
+        "ongoing_cost_usd": 150,
+        "y1_income_usd": 11,
+        "y5_income_usd": 14,
+        "y10_income_usd": 14,
     },
     {
         "id": "p2_startup_devtools",
@@ -786,7 +1151,19 @@ CAREER_NODES = [
         "probability": 0.30,
         "color": "#e84393",
         "note": "Build tools you wish existed. CLI tools, VS Code extensions, CI/CD integrations, monitoring. Developer audience is hard but loyal. Open-source → commercial is proven path.",
-        "children": ["p3_startup_traction", "p3_startup_slow", "p3_startup_failed"],
+        "children": [
+            "p3_startup_traction",
+            "p3_startup_funded",
+            "p3_startup_slow",
+            "p3_startup_failed",
+        ],
+        "income_floor_usd": 960,
+        "income_ceiling_usd": 1090,
+        "initial_capital_usd": 300,
+        "ongoing_cost_usd": 100,
+        "y1_income_usd": 11,
+        "y5_income_usd": 13,
+        "y10_income_usd": 13,
     },
     {
         "id": "p2_startup_general",
@@ -797,7 +1174,19 @@ CAREER_NODES = [
         "probability": 0.30,
         "color": "#e84393",
         "note": "Solve a niche problem. Micro-SaaS ($1–10K MRR) is achievable solo. Examples: niche CRMs, automation tools, vertical SaaS for specific industries. Lower ceiling but faster to profitability.",
-        "children": ["p3_startup_traction", "p3_startup_slow", "p3_startup_failed"],
+        "children": [
+            "p3_startup_traction",
+            "p3_startup_funded",
+            "p3_startup_slow",
+            "p3_startup_failed",
+        ],
+        "income_floor_usd": 960,
+        "income_ceiling_usd": 1300,
+        "initial_capital_usd": 300,
+        "ongoing_cost_usd": 80,
+        "y1_income_usd": 11,
+        "y5_income_usd": 16,
+        "y10_income_usd": 16,
     },
     # ─── Phase 2: Startup Outcomes ───
     {
@@ -810,6 +1199,13 @@ CAREER_NODES = [
         "color": "#e84393",
         "note": "Product-market fit signals. Growing MRR, low churn, organic signups. Key decision: keep job for safety or go full-time to accelerate. Only ~10–20% of side projects reach this.",
         "children": ["p4_startup_scale", "p4_startup_lifestyle"],
+        "income_floor_usd": 1960,
+        "income_ceiling_usd": 5960,
+        "initial_capital_usd": 1000,
+        "ongoing_cost_usd": 300,
+        "y1_income_usd": 24,
+        "y5_income_usd": 60,
+        "y10_income_usd": 72,
     },
     {
         "id": "p3_startup_funded",
@@ -821,6 +1217,13 @@ CAREER_NODES = [
         "color": "#e84393",
         "note": "Got into YC, Techstars, or raised a seed round ($100K–500K). Quit job, go full-time. High risk but massive upside if it works. Rare for Pakistani founders but growing.",
         "children": ["p4_startup_scale", "p4_startup_acquired", "p4_startup_abandoned"],
+        "income_floor_usd": 4170,
+        "income_ceiling_usd": 8330,
+        "initial_capital_usd": 0,
+        "ongoing_cost_usd": 0,
+        "y1_income_usd": 50,
+        "y5_income_usd": 100,
+        "y10_income_usd": 100,
     },
     {
         "id": "p3_startup_slow",
@@ -836,6 +1239,13 @@ CAREER_NODES = [
             "p4_startup_pivot_remote",
             "p4_startup_abandoned",
         ],
+        "income_floor_usd": 960,
+        "income_ceiling_usd": 1170,
+        "initial_capital_usd": 500,
+        "ongoing_cost_usd": 100,
+        "y1_income_usd": 11,
+        "y5_income_usd": 14,
+        "y10_income_usd": 14,
     },
     {
         "id": "p3_startup_failed",
@@ -847,6 +1257,13 @@ CAREER_NODES = [
         "color": "#d63031",
         "note": "Never shipped, or shipped and nobody cared. 70% of side projects never launch. Not wasted — you built skills, a portfolio, and a GitHub profile that helps with remote jobs.",
         "children": ["p4_startup_pivot_remote", "p4_startup_abandoned"],
+        "income_floor_usd": 960,
+        "income_ceiling_usd": 960,
+        "initial_capital_usd": 0,
+        "ongoing_cost_usd": 0,
+        "y1_income_usd": 11,
+        "y5_income_usd": 11,
+        "y10_income_usd": 11,
     },
     # ─── Phase 3: Startup Final Outcomes ───
     {
@@ -859,6 +1276,13 @@ CAREER_NODES = [
         "color": "#e84393",
         "note": "Unicorn indie hacker outcome. $120–600K/yr from your own product. Full autonomy, location independent. Fewer than 5% of startups reach this. But you only need to win once.",
         "children": [],
+        "income_floor_usd": 10000,
+        "income_ceiling_usd": 50000,
+        "initial_capital_usd": 5000,
+        "ongoing_cost_usd": 2000,
+        "y1_income_usd": 120,
+        "y5_income_usd": 400,
+        "y10_income_usd": 600,
     },
     {
         "id": "p4_startup_acquired",
@@ -870,6 +1294,13 @@ CAREER_NODES = [
         "color": "#e84393",
         "note": "Company or team acquired. One-time payout ($200K–$500K) plus employment at acquirer. Rare but real — especially for AI startups with good tech.",
         "children": [],
+        "income_floor_usd": 8330,
+        "income_ceiling_usd": 12500,
+        "initial_capital_usd": 0,
+        "ongoing_cost_usd": 0,
+        "y1_income_usd": 100,
+        "y5_income_usd": 130,
+        "y10_income_usd": 160,
     },
     {
         "id": "p4_startup_lifestyle",
@@ -881,6 +1312,13 @@ CAREER_NODES = [
         "color": "#74b9ff",
         "note": "Best risk-adjusted startup outcome. Keep career for stability, product earns $3–10K/mo passively. Compound over multiple products. Many indie hackers live this way.",
         "children": [],
+        "income_floor_usd": 3960,
+        "income_ceiling_usd": 10960,
+        "initial_capital_usd": 1000,
+        "ongoing_cost_usd": 200,
+        "y1_income_usd": 48,
+        "y5_income_usd": 108,
+        "y10_income_usd": 132,
     },
     {
         "id": "p4_startup_pivot_remote",
@@ -892,6 +1330,13 @@ CAREER_NODES = [
         "color": "#00cec9",
         "note": "Startup didn't work but you built real products, shipped code, managed infra. This portfolio is gold for remote job applications. Many founders land better jobs after failing.",
         "children": [],
+        "income_floor_usd": 5420,
+        "income_ceiling_usd": 9170,
+        "initial_capital_usd": 0,
+        "ongoing_cost_usd": 0,
+        "y1_income_usd": 65,
+        "y5_income_usd": 95,
+        "y10_income_usd": 125,
     },
     {
         "id": "p4_startup_abandoned",
@@ -903,6 +1348,13 @@ CAREER_NODES = [
         "color": "#636e72",
         "note": "Startup attempts fizzled out. Time spent wasn't wasted — technical skills sharpened, product thinking improved. Return to career track with broader perspective.",
         "children": [],
+        "income_floor_usd": 960,
+        "income_ceiling_usd": 960,
+        "initial_capital_usd": 0,
+        "ongoing_cost_usd": 0,
+        "y1_income_usd": 11,
+        "y5_income_usd": 11,
+        "y10_income_usd": 11,
     },
     # ═══════════════════════════════════════════════════════════
     # FREELANCING / CONSULTING PATH
@@ -922,6 +1374,13 @@ CAREER_NODES = [
             "p2_freelance_direct",
             "p2_freelance_agency",
         ],
+        "income_floor_usd": 960,
+        "income_ceiling_usd": 960,
+        "initial_capital_usd": 100,
+        "ongoing_cost_usd": 30,
+        "y1_income_usd": 11,
+        "y5_income_usd": 11,
+        "y10_income_usd": 11,
     },
     # ─── Phase 1: Freelancing Channels ───
     {
@@ -938,6 +1397,13 @@ CAREER_NODES = [
             "p3_freelance_side",
             "p3_freelance_dried",
         ],
+        "income_floor_usd": 1390,
+        "income_ceiling_usd": 2260,
+        "initial_capital_usd": 100,
+        "ongoing_cost_usd": 50,
+        "y1_income_usd": 17,
+        "y5_income_usd": 27,
+        "y10_income_usd": 27,
     },
     {
         "id": "p2_freelance_direct",
@@ -953,6 +1419,13 @@ CAREER_NODES = [
             "p3_freelance_side",
             "p3_freelance_dried",
         ],
+        "income_floor_usd": 1610,
+        "income_ceiling_usd": 3130,
+        "initial_capital_usd": 200,
+        "ongoing_cost_usd": 30,
+        "y1_income_usd": 19,
+        "y5_income_usd": 38,
+        "y10_income_usd": 38,
     },
     {
         "id": "p2_freelance_agency",
@@ -968,6 +1441,13 @@ CAREER_NODES = [
             "p3_freelance_side",
             "p3_freelance_dried",
         ],
+        "income_floor_usd": 1170,
+        "income_ceiling_usd": 1830,
+        "initial_capital_usd": 1000,
+        "ongoing_cost_usd": 200,
+        "y1_income_usd": 14,
+        "y5_income_usd": 22,
+        "y10_income_usd": 22,
     },
     # ─── Phase 2: Freelancing Outcomes ───
     {
@@ -984,6 +1464,13 @@ CAREER_NODES = [
             "p4_freelance_stable",
             "p4_freelance_burnout",
         ],
+        "income_floor_usd": 5000,
+        "income_ceiling_usd": 10000,
+        "initial_capital_usd": 500,
+        "ongoing_cost_usd": 100,
+        "y1_income_usd": 60,
+        "y5_income_usd": 100,
+        "y10_income_usd": 120,
     },
     {
         "id": "p3_freelance_side",
@@ -999,6 +1486,13 @@ CAREER_NODES = [
             "p4_freelance_to_remote",
             "p4_freelance_burnout",
         ],
+        "income_floor_usd": 1830,
+        "income_ceiling_usd": 3130,
+        "initial_capital_usd": 0,
+        "ongoing_cost_usd": 30,
+        "y1_income_usd": 22,
+        "y5_income_usd": 38,
+        "y10_income_usd": 38,
     },
     {
         "id": "p3_freelance_dried",
@@ -1010,6 +1504,13 @@ CAREER_NODES = [
         "color": "#636e72",
         "note": "Client pipeline empty, or burned out from working 60+ hr weeks (job + freelance). Common at month 6–12. Not a failure — freelance reputation still on profile for future opportunities.",
         "children": ["p4_freelance_to_remote", "p4_freelance_burnout"],
+        "income_floor_usd": 960,
+        "income_ceiling_usd": 960,
+        "initial_capital_usd": 0,
+        "ongoing_cost_usd": 0,
+        "y1_income_usd": 11,
+        "y5_income_usd": 11,
+        "y10_income_usd": 11,
     },
     # ─── Phase 3: Freelancing Final Outcomes ───
     {
@@ -1022,6 +1523,13 @@ CAREER_NODES = [
         "color": "#00b894",
         "note": "Top-tier AI consultant. $150–250/hr. Clients include US/EU startups and enterprises. Selective about projects. 3–4 clients at a time. Best freelancing outcome.",
         "children": [],
+        "income_floor_usd": 15000,
+        "income_ceiling_usd": 30000,
+        "initial_capital_usd": 0,
+        "ongoing_cost_usd": 200,
+        "y1_income_usd": 180,
+        "y5_income_usd": 300,
+        "y10_income_usd": 360,
     },
     {
         "id": "p4_freelance_stable",
@@ -1033,6 +1541,13 @@ CAREER_NODES = [
         "color": "#74b9ff",
         "note": "Reliable $8–12K/mo from 2–3 long-term clients. Good work-life balance. Equivalent to senior remote salary but with more flexibility and no boss.",
         "children": [],
+        "income_floor_usd": 8000,
+        "income_ceiling_usd": 12000,
+        "initial_capital_usd": 0,
+        "ongoing_cost_usd": 100,
+        "y1_income_usd": 96,
+        "y5_income_usd": 130,
+        "y10_income_usd": 144,
     },
     {
         "id": "p4_freelance_to_remote",
@@ -1044,6 +1559,13 @@ CAREER_NODES = [
         "color": "#00cec9",
         "note": "Freelancing built your reputation and client network. A client offers full-time role, or your Toptal profile gets you direct employment. Common and lucrative transition.",
         "children": [],
+        "income_floor_usd": 5830,
+        "income_ceiling_usd": 9170,
+        "initial_capital_usd": 0,
+        "ongoing_cost_usd": 0,
+        "y1_income_usd": 70,
+        "y5_income_usd": 95,
+        "y10_income_usd": 125,
     },
     {
         "id": "p4_freelance_burnout",
@@ -1055,25 +1577,1210 @@ CAREER_NODES = [
         "color": "#636e72",
         "note": "Freelancing is exhausting — sales, delivery, invoicing, taxes all on you. Many return to employment with better negotiating position. Freelance experience = higher offers.",
         "children": [],
+        "income_floor_usd": 1300,
+        "income_ceiling_usd": 2170,
+        "initial_capital_usd": 0,
+        "ongoing_cost_usd": 0,
+        "y1_income_usd": 16,
+        "y5_income_usd": 22,
+        "y10_income_usd": 30,
+    },
+]
+
+# ═══════════════════════════════════════════════════════════════
+# EDGES: Conditional probabilities for parent → child transitions
+# Each parent's children probabilities MUST sum to 1.0
+# link_type: 'child' = normal tree edge
+# ═══════════════════════════════════════════════════════════════
+
+EDGES = [
+    # ─── ROOT → Phase 0 ───
+    # Root node is "root" in the frontend; children sum to 1.0
+    # Note: root also has "masters_root" but that's handled separately
+    # These are the career/trading/startup/freelance branch probabilities
+    # from the root, conditioned on "not doing masters"
+    {
+        "source_id": "root",
+        "target_id": "p1_promoted",
+        "probability": 0.35,
+        "link_type": "child",
+        "note": "Promoted at Motive within 2 years",
+    },
+    {
+        "source_id": "root",
+        "target_id": "p1_notpromoted_stay",
+        "probability": 0.19,
+        "link_type": "child",
+        "note": "Not promoted, stay at Motive",
+    },
+    {
+        "source_id": "root",
+        "target_id": "p1_switch_local",
+        "probability": 0.13,
+        "link_type": "child",
+        "note": "Leave Motive for local company",
+    },
+    {
+        "source_id": "root",
+        "target_id": "p1_trading",
+        "probability": 0.10,
+        "link_type": "child",
+        "note": "Start trading side hustle",
+    },
+    {
+        "source_id": "root",
+        "target_id": "p1_startup",
+        "probability": 0.08,
+        "link_type": "child",
+        "note": "Start building products",
+    },
+    {
+        "source_id": "root",
+        "target_id": "p1_freelance",
+        "probability": 0.15,
+        "link_type": "child",
+        "note": "Start AI/ML freelancing",
+    },
+    # sum = 1.0
+    # ─── CAREER: Phase 0 → Phase 1 ───
+    # p1_promoted → children (sum = 1.0)
+    {
+        "source_id": "p1_promoted",
+        "target_id": "p2_l4_staymotive",
+        "probability": 0.40,
+        "link_type": "child",
+        "note": "Stay at Motive, target L5",
+    },
+    {
+        "source_id": "p1_promoted",
+        "target_id": "p2_l4_remoteUSD",
+        "probability": 0.38,
+        "link_type": "child",
+        "note": "Go remote with L4 credential",
+    },
+    {
+        "source_id": "p1_promoted",
+        "target_id": "p2_l4_switchlocal",
+        "probability": 0.22,
+        "link_type": "child",
+        "note": "Switch to local company as L4",
+    },
+    # p1_notpromoted_stay → children (sum = 1.0)
+    {
+        "source_id": "p1_notpromoted_stay",
+        "target_id": "p2_np_teamswitch",
+        "probability": 0.38,
+        "link_type": "child",
+        "note": "Internal team switch",
+    },
+    {
+        "source_id": "p1_notpromoted_stay",
+        "target_id": "p2_np_motive_retry",
+        "probability": 0.32,
+        "link_type": "child",
+        "note": "Retry promotion same team",
+    },
+    {
+        "source_id": "p1_notpromoted_stay",
+        "target_id": "p2_np_remote",
+        "probability": 0.30,
+        "link_type": "child",
+        "note": "Skip local, go remote as L3",
+    },
+    # p1_switch_local → children (sum = 1.0)
+    {
+        "source_id": "p1_switch_local",
+        "target_id": "p2_local_promoted",
+        "probability": 0.48,
+        "link_type": "child",
+        "note": "Promoted at new company",
+    },
+    {
+        "source_id": "p1_switch_local",
+        "target_id": "p2_local_stagnate",
+        "probability": 0.27,
+        "link_type": "child",
+        "note": "Stagnate at new company",
+    },
+    {
+        "source_id": "p1_switch_local",
+        "target_id": "p2_local_remote",
+        "probability": 0.25,
+        "link_type": "child",
+        "note": "Go remote from new company",
+    },
+    # ─── CAREER: Phase 1 → Phase 2 ───
+    # p2_l4_staymotive → children (sum = 1.0)
+    {
+        "source_id": "p2_l4_staymotive",
+        "target_id": "p3_l5_achieved",
+        "probability": 0.35,
+        "link_type": "child",
+        "note": "Achieve L5",
+    },
+    {
+        "source_id": "p2_l4_staymotive",
+        "target_id": "p3_l5_stalled_motive",
+        "probability": 0.65,
+        "link_type": "child",
+        "note": "Stall at L4",
+    },
+    # p2_l4_remoteUSD → children (sum = 1.0)
+    {
+        "source_id": "p2_l4_remoteUSD",
+        "target_id": "p3_remote_senior",
+        "probability": 0.55,
+        "link_type": "child",
+        "note": "Grow to senior remote",
+    },
+    {
+        "source_id": "p2_l4_remoteUSD",
+        "target_id": "p3_remote_plateau",
+        "probability": 0.45,
+        "link_type": "child",
+        "note": "Plateau on platform",
+    },
+    # p2_l4_switchlocal → children (sum = 1.0)
+    {
+        "source_id": "p2_l4_switchlocal",
+        "target_id": "p3_local_senior_rise",
+        "probability": 0.35,
+        "link_type": "child",
+        "note": "Rise to staff locally",
+    },
+    {
+        "source_id": "p2_l4_switchlocal",
+        "target_id": "p3_local_switch_remote",
+        "probability": 0.65,
+        "link_type": "child",
+        "note": "Use senior title to go remote",
+    },
+    # p2_np_teamswitch → children (sum = 1.0)
+    {
+        "source_id": "p2_np_teamswitch",
+        "target_id": "p3_teamswitch_l4",
+        "probability": 0.58,
+        "link_type": "child",
+        "note": "Got L4 after team switch",
+    },
+    {
+        "source_id": "p2_np_teamswitch",
+        "target_id": "p3_teamswitch_stuck",
+        "probability": 0.42,
+        "link_type": "child",
+        "note": "Still stuck after team switch",
+    },
+    # p2_np_motive_retry → children (sum = 1.0)
+    {
+        "source_id": "p2_np_motive_retry",
+        "target_id": "p3_retry_promoted",
+        "probability": 0.38,
+        "link_type": "child",
+        "note": "Retry worked, got L4",
+    },
+    {
+        "source_id": "p2_np_motive_retry",
+        "target_id": "p3_retry_failed_leave",
+        "probability": 0.62,
+        "link_type": "child",
+        "note": "Failed again, leave Motive",
+    },
+    # p2_np_remote → children (sum = 1.0)
+    {
+        "source_id": "p2_np_remote",
+        "target_id": "p3_remote_l3_grows",
+        "probability": 0.48,
+        "link_type": "child",
+        "note": "Remote grows despite L3",
+    },
+    {
+        "source_id": "p2_np_remote",
+        "target_id": "p3_remote_l3_contract",
+        "probability": 0.52,
+        "link_type": "child",
+        "note": "Contract gaps, lower rates",
+    },
+    # p2_local_promoted → children (sum = 1.0)
+    {
+        "source_id": "p2_local_promoted",
+        "target_id": "p3_local_stay_staff",
+        "probability": 0.40,
+        "link_type": "child",
+        "note": "Stay and rise to staff locally",
+    },
+    {
+        "source_id": "p2_local_promoted",
+        "target_id": "p3_local_pivot_remote",
+        "probability": 0.60,
+        "link_type": "child",
+        "note": "Pivot remote from local senior",
+    },
+    # p2_local_stagnate → children (sum = 1.0)
+    {
+        "source_id": "p2_local_stagnate",
+        "target_id": "p3_stagnate_remote",
+        "probability": 0.55,
+        "link_type": "child",
+        "note": "Escape stagnation via remote",
+    },
+    {
+        "source_id": "p2_local_stagnate",
+        "target_id": "p3_stagnate_hop",
+        "probability": 0.45,
+        "link_type": "child",
+        "note": "Hop to better local company",
+    },
+    # p2_local_remote → children (sum = 1.0)
+    {
+        "source_id": "p2_local_remote",
+        "target_id": "p3_remote_mid_climb",
+        "probability": 0.52,
+        "link_type": "child",
+        "note": "Remote growth trajectory",
+    },
+    {
+        "source_id": "p2_local_remote",
+        "target_id": "p3_remote_mid_stable",
+        "probability": 0.48,
+        "link_type": "child",
+        "note": "Stable mid-level remote",
+    },
+    # ─── CAREER: Phase 2 → Phase 3 ───
+    # p3_l5_achieved → children (sum = 1.0)
+    {
+        "source_id": "p3_l5_achieved",
+        "target_id": "p4_motive_staff",
+        "probability": 0.18,
+        "link_type": "child",
+        "note": "Reach Staff at Motive",
+    },
+    {
+        "source_id": "p3_l5_achieved",
+        "target_id": "p4_l5_goremote",
+        "probability": 0.82,
+        "link_type": "child",
+        "note": "Use L5 cred to go remote staff",
+    },
+    # p3_l5_stalled_motive → children (sum = 1.0)
+    {
+        "source_id": "p3_l5_stalled_motive",
+        "target_id": "p4_l4stall_remote",
+        "probability": 0.60,
+        "link_type": "child",
+        "note": "Stalled L4 goes remote",
+    },
+    {
+        "source_id": "p3_l5_stalled_motive",
+        "target_id": "p4_l4stall_local_sr",
+        "probability": 0.40,
+        "link_type": "child",
+        "note": "Stalled L4 switches local",
+    },
+    # p3_remote_senior → children (sum = 1.0)
+    {
+        "source_id": "p3_remote_senior",
+        "target_id": "p4_remote_staff",
+        "probability": 0.30,
+        "link_type": "child",
+        "note": "Rise to remote staff",
+    },
+    {
+        "source_id": "p3_remote_senior",
+        "target_id": "p4_remote_stable_senior",
+        "probability": 0.70,
+        "link_type": "child",
+        "note": "Stable senior remote",
+    },
+    # p3_remote_plateau → children (sum = 1.0)
+    {
+        "source_id": "p3_remote_plateau",
+        "target_id": "p4_platform_pivot",
+        "probability": 0.50,
+        "link_type": "child",
+        "note": "Pivot from platform to direct",
+    },
+    {
+        "source_id": "p3_remote_plateau",
+        "target_id": "p4_platform_direct",
+        "probability": 0.50,
+        "link_type": "child",
+        "note": "Stay on platforms",
+    },
+    # p3_local_senior_rise → children (sum = 1.0)
+    {
+        "source_id": "p3_local_senior_rise",
+        "target_id": "p4_local_staff",
+        "probability": 0.35,
+        "link_type": "child",
+        "note": "Staff/Principal locally",
+    },
+    {
+        "source_id": "p3_local_senior_rise",
+        "target_id": "p4_local_sr_remote",
+        "probability": 0.65,
+        "link_type": "child",
+        "note": "Local senior goes remote",
+    },
+    # p3_local_switch_remote → children (sum = 1.0)
+    {
+        "source_id": "p3_local_switch_remote",
+        "target_id": "p4_remote_sr_direct",
+        "probability": 0.35,
+        "link_type": "child",
+        "note": "Remote staff/senior direct",
+    },
+    {
+        "source_id": "p3_local_switch_remote",
+        "target_id": "p4_remote_sr_stable",
+        "probability": 0.65,
+        "link_type": "child",
+        "note": "Stable remote senior",
+    },
+    # p3_teamswitch_l4 → children (sum = 1.0)
+    {
+        "source_id": "p3_teamswitch_l4",
+        "target_id": "p4_l4late_remote",
+        "probability": 0.58,
+        "link_type": "child",
+        "note": "Late L4 goes remote",
+    },
+    {
+        "source_id": "p3_teamswitch_l4",
+        "target_id": "p4_l4late_motive",
+        "probability": 0.42,
+        "link_type": "child",
+        "note": "Stay Motive, target L5",
+    },
+    # p3_teamswitch_stuck → children (sum = 1.0)
+    {
+        "source_id": "p3_teamswitch_stuck",
+        "target_id": "p4_stuck_emergency_remote",
+        "probability": 0.45,
+        "link_type": "child",
+        "note": "Emergency remote pivot",
+    },
+    {
+        "source_id": "p3_teamswitch_stuck",
+        "target_id": "p4_stuck_local_hop",
+        "probability": 0.55,
+        "link_type": "child",
+        "note": "Local company hop again",
+    },
+    # p3_retry_promoted → children (sum = 1.0)
+    {
+        "source_id": "p3_retry_promoted",
+        "target_id": "p4_l4late_remote",
+        "probability": 0.58,
+        "link_type": "child",
+        "note": "Late L4 goes remote",
+    },
+    {
+        "source_id": "p3_retry_promoted",
+        "target_id": "p4_l4late_motive",
+        "probability": 0.42,
+        "link_type": "child",
+        "note": "Stay Motive, target L5",
+    },
+    # p3_retry_failed_leave → children (sum = 1.0)
+    {
+        "source_id": "p3_retry_failed_leave",
+        "target_id": "p4_exited_motive_remote",
+        "probability": 0.52,
+        "link_type": "child",
+        "note": "Post-Motive remote",
+    },
+    {
+        "source_id": "p3_retry_failed_leave",
+        "target_id": "p4_exited_motive_local",
+        "probability": 0.48,
+        "link_type": "child",
+        "note": "Post-Motive local senior",
+    },
+    # p3_remote_l3_grows → children (sum = 1.0)
+    {
+        "source_id": "p3_remote_l3_grows",
+        "target_id": "p4_remote_mid_senior",
+        "probability": 0.50,
+        "link_type": "child",
+        "note": "Grew from L3 to senior remote",
+    },
+    {
+        "source_id": "p3_remote_l3_grows",
+        "target_id": "p4_remote_mid_stable2",
+        "probability": 0.50,
+        "link_type": "child",
+        "note": "Mid remote plateau",
+    },
+    # p3_remote_l3_contract → children (sum = 1.0)
+    {
+        "source_id": "p3_remote_l3_contract",
+        "target_id": "p4_contract_rebuild",
+        "probability": 0.45,
+        "link_type": "child",
+        "note": "Rebuilt and relaunched",
+    },
+    {
+        "source_id": "p3_remote_l3_contract",
+        "target_id": "p4_contract_grind",
+        "probability": 0.55,
+        "link_type": "child",
+        "note": "Low remote grind",
+    },
+    # p3_local_stay_staff → children (sum = 1.0)
+    {
+        "source_id": "p3_local_stay_staff",
+        "target_id": "p4_local_staff",
+        "probability": 0.35,
+        "link_type": "child",
+        "note": "Staff/Principal locally",
+    },
+    {
+        "source_id": "p3_local_stay_staff",
+        "target_id": "p4_local_sr_remote",
+        "probability": 0.65,
+        "link_type": "child",
+        "note": "Local senior goes late remote",
+    },
+    # p3_local_pivot_remote → children (sum = 1.0)
+    {
+        "source_id": "p3_local_pivot_remote",
+        "target_id": "p4_remote_sr_direct",
+        "probability": 0.35,
+        "link_type": "child",
+        "note": "Remote staff/senior direct",
+    },
+    {
+        "source_id": "p3_local_pivot_remote",
+        "target_id": "p4_remote_sr_stable",
+        "probability": 0.65,
+        "link_type": "child",
+        "note": "Stable remote senior",
+    },
+    # p3_stagnate_remote → children (sum = 1.0)
+    {
+        "source_id": "p3_stagnate_remote",
+        "target_id": "p4_platform_pivot",
+        "probability": 0.45,
+        "link_type": "child",
+        "note": "Platform to direct",
+    },
+    {
+        "source_id": "p3_stagnate_remote",
+        "target_id": "p4_remote_stable_senior",
+        "probability": 0.55,
+        "link_type": "child",
+        "note": "Stable remote senior",
+    },
+    # p3_stagnate_hop → children (sum = 1.0)
+    {
+        "source_id": "p3_stagnate_hop",
+        "target_id": "p4_local_staff",
+        "probability": 0.30,
+        "link_type": "child",
+        "note": "Staff locally after hop",
+    },
+    {
+        "source_id": "p3_stagnate_hop",
+        "target_id": "p4_local_sr_remote",
+        "probability": 0.70,
+        "link_type": "child",
+        "note": "Late remote after hop",
+    },
+    # p3_remote_mid_climb → children (sum = 1.0)
+    {
+        "source_id": "p3_remote_mid_climb",
+        "target_id": "p4_remote_staff",
+        "probability": 0.35,
+        "link_type": "child",
+        "note": "Rise to remote staff",
+    },
+    {
+        "source_id": "p3_remote_mid_climb",
+        "target_id": "p4_remote_stable_senior",
+        "probability": 0.65,
+        "link_type": "child",
+        "note": "Stable remote senior",
+    },
+    # p3_remote_mid_stable → children (sum = 1.0)
+    {
+        "source_id": "p3_remote_mid_stable",
+        "target_id": "p4_platform_pivot",
+        "probability": 0.50,
+        "link_type": "child",
+        "note": "Platform to direct upgrade",
+    },
+    {
+        "source_id": "p3_remote_mid_stable",
+        "target_id": "p4_platform_direct",
+        "probability": 0.50,
+        "link_type": "child",
+        "note": "Still on platforms",
+    },
+    # ═══════════════════════════════════════════════════════════
+    # TRADING EDGES
+    # ═══════════════════════════════════════════════════════════
+    # p1_trading → children (sum = 1.0)
+    {
+        "source_id": "p1_trading",
+        "target_id": "p2_trade_crypto",
+        "probability": 0.35,
+        "link_type": "child",
+        "note": "Choose crypto/forex trading",
+    },
+    {
+        "source_id": "p1_trading",
+        "target_id": "p2_trade_algo",
+        "probability": 0.30,
+        "link_type": "child",
+        "note": "Choose algo/quant trading",
+    },
+    {
+        "source_id": "p1_trading",
+        "target_id": "p2_trade_stocks",
+        "probability": 0.35,
+        "link_type": "child",
+        "note": "Choose stocks/options trading",
+    },
+    # p2_trade_crypto → children (sum = 1.0)
+    {
+        "source_id": "p2_trade_crypto",
+        "target_id": "p3_trade_profitable",
+        "probability": 0.20,
+        "link_type": "child",
+        "note": "Consistently profitable",
+    },
+    {
+        "source_id": "p2_trade_crypto",
+        "target_id": "p3_trade_breakeven",
+        "probability": 0.40,
+        "link_type": "child",
+        "note": "Breakeven/hobby level",
+    },
+    {
+        "source_id": "p2_trade_crypto",
+        "target_id": "p3_trade_loss",
+        "probability": 0.40,
+        "link_type": "child",
+        "note": "Net losses, capital blown",
+    },
+    # p2_trade_algo → children (sum = 1.0)
+    {
+        "source_id": "p2_trade_algo",
+        "target_id": "p3_trade_algo_edge",
+        "probability": 0.20,
+        "link_type": "child",
+        "note": "Found automated edge",
+    },
+    {
+        "source_id": "p2_trade_algo",
+        "target_id": "p3_trade_breakeven",
+        "probability": 0.45,
+        "link_type": "child",
+        "note": "Breakeven/hobby level",
+    },
+    {
+        "source_id": "p2_trade_algo",
+        "target_id": "p3_trade_loss",
+        "probability": 0.35,
+        "link_type": "child",
+        "note": "Net losses",
+    },
+    # p2_trade_stocks → children (sum = 1.0)
+    {
+        "source_id": "p2_trade_stocks",
+        "target_id": "p3_trade_profitable",
+        "probability": 0.25,
+        "link_type": "child",
+        "note": "Consistently profitable",
+    },
+    {
+        "source_id": "p2_trade_stocks",
+        "target_id": "p3_trade_breakeven",
+        "probability": 0.50,
+        "link_type": "child",
+        "note": "Breakeven/hobby level",
+    },
+    {
+        "source_id": "p2_trade_stocks",
+        "target_id": "p3_trade_loss",
+        "probability": 0.25,
+        "link_type": "child",
+        "note": "Net losses",
+    },
+    # p3_trade_profitable → children (sum = 1.0)
+    {
+        "source_id": "p3_trade_profitable",
+        "target_id": "p4_trade_fulltime",
+        "probability": 0.30,
+        "link_type": "child",
+        "note": "Go full-time trader",
+    },
+    {
+        "source_id": "p3_trade_profitable",
+        "target_id": "p4_trade_sideincome",
+        "probability": 0.70,
+        "link_type": "child",
+        "note": "Keep as side income",
+    },
+    # p3_trade_algo_edge → children (sum = 1.0)
+    {
+        "source_id": "p3_trade_algo_edge",
+        "target_id": "p4_trade_fulltime",
+        "probability": 0.40,
+        "link_type": "child",
+        "note": "Full-time trader/fund",
+    },
+    {
+        "source_id": "p3_trade_algo_edge",
+        "target_id": "p4_trade_quant_fund",
+        "probability": 0.60,
+        "link_type": "child",
+        "note": "Join quant fund/prop shop",
+    },
+    # p3_trade_breakeven → children (sum = 1.0)
+    {
+        "source_id": "p3_trade_breakeven",
+        "target_id": "p4_trade_sideincome",
+        "probability": 0.45,
+        "link_type": "child",
+        "note": "Continue as side income",
+    },
+    {
+        "source_id": "p3_trade_breakeven",
+        "target_id": "p4_trade_quit",
+        "probability": 0.55,
+        "link_type": "child",
+        "note": "Quit trading",
+    },
+    # p3_trade_loss → children (sum = 1.0)
+    {
+        "source_id": "p3_trade_loss",
+        "target_id": "p4_trade_quit",
+        "probability": 0.60,
+        "link_type": "child",
+        "note": "Quit trading permanently",
+    },
+    {
+        "source_id": "p3_trade_loss",
+        "target_id": "p4_trade_restart",
+        "probability": 0.40,
+        "link_type": "child",
+        "note": "Restart with better strategy",
+    },
+    # ═══════════════════════════════════════════════════════════
+    # STARTUP EDGES
+    # ═══════════════════════════════════════════════════════════
+    # p1_startup → children (sum = 1.0)
+    {
+        "source_id": "p1_startup",
+        "target_id": "p2_startup_ai_saas",
+        "probability": 0.40,
+        "link_type": "child",
+        "note": "Build AI/ML SaaS",
+    },
+    {
+        "source_id": "p1_startup",
+        "target_id": "p2_startup_devtools",
+        "probability": 0.30,
+        "link_type": "child",
+        "note": "Build dev tools",
+    },
+    {
+        "source_id": "p1_startup",
+        "target_id": "p2_startup_general",
+        "probability": 0.30,
+        "link_type": "child",
+        "note": "Build general/micro SaaS",
+    },
+    # p2_startup_ai_saas → children (sum = 1.0)
+    {
+        "source_id": "p2_startup_ai_saas",
+        "target_id": "p3_startup_traction",
+        "probability": 0.20,
+        "link_type": "child",
+        "note": "Got traction $1-5K MRR",
+    },
+    {
+        "source_id": "p2_startup_ai_saas",
+        "target_id": "p3_startup_funded",
+        "probability": 0.08,
+        "link_type": "child",
+        "note": "Seed funded / accelerator",
+    },
+    {
+        "source_id": "p2_startup_ai_saas",
+        "target_id": "p3_startup_slow",
+        "probability": 0.42,
+        "link_type": "child",
+        "note": "Low traction, pivoting",
+    },
+    {
+        "source_id": "p2_startup_ai_saas",
+        "target_id": "p3_startup_failed",
+        "probability": 0.30,
+        "link_type": "child",
+        "note": "Failed to ship / no fit",
+    },
+    # p2_startup_devtools → children (sum = 0.18 + 0.05 + 0.44 + 0.33 = 1.0)
+    {
+        "source_id": "p2_startup_devtools",
+        "target_id": "p3_startup_traction",
+        "probability": 0.18,
+        "link_type": "child",
+        "note": "Got traction",
+    },
+    {
+        "source_id": "p2_startup_devtools",
+        "target_id": "p3_startup_funded",
+        "probability": 0.05,
+        "link_type": "child",
+        "note": "Seed funded / accelerator",
+    },
+    {
+        "source_id": "p2_startup_devtools",
+        "target_id": "p3_startup_slow",
+        "probability": 0.44,
+        "link_type": "child",
+        "note": "Low traction, pivoting",
+    },
+    {
+        "source_id": "p2_startup_devtools",
+        "target_id": "p3_startup_failed",
+        "probability": 0.33,
+        "link_type": "child",
+        "note": "Failed to ship / no fit",
+    },
+    # p2_startup_general → children (sum = 0.22 + 0.03 + 0.42 + 0.33 = 1.0)
+    {
+        "source_id": "p2_startup_general",
+        "target_id": "p3_startup_traction",
+        "probability": 0.22,
+        "link_type": "child",
+        "note": "Got traction",
+    },
+    {
+        "source_id": "p2_startup_general",
+        "target_id": "p3_startup_funded",
+        "probability": 0.03,
+        "link_type": "child",
+        "note": "Seed funded / accelerator",
+    },
+    {
+        "source_id": "p2_startup_general",
+        "target_id": "p3_startup_slow",
+        "probability": 0.42,
+        "link_type": "child",
+        "note": "Low traction, pivoting",
+    },
+    {
+        "source_id": "p2_startup_general",
+        "target_id": "p3_startup_failed",
+        "probability": 0.33,
+        "link_type": "child",
+        "note": "Failed to ship / no fit",
+    },
+    # p3_startup_traction → children (sum = 1.0)
+    {
+        "source_id": "p3_startup_traction",
+        "target_id": "p4_startup_scale",
+        "probability": 0.35,
+        "link_type": "child",
+        "note": "Scale to $10-50K MRR",
+    },
+    {
+        "source_id": "p3_startup_traction",
+        "target_id": "p4_startup_lifestyle",
+        "probability": 0.65,
+        "link_type": "child",
+        "note": "Lifestyle biz side income",
+    },
+    # p3_startup_funded → children (sum = 1.0)
+    {
+        "source_id": "p3_startup_funded",
+        "target_id": "p4_startup_scale",
+        "probability": 0.35,
+        "link_type": "child",
+        "note": "Scale with funding",
+    },
+    {
+        "source_id": "p3_startup_funded",
+        "target_id": "p4_startup_acquired",
+        "probability": 0.20,
+        "link_type": "child",
+        "note": "Acqui-hired / acquired",
+    },
+    {
+        "source_id": "p3_startup_funded",
+        "target_id": "p4_startup_abandoned",
+        "probability": 0.45,
+        "link_type": "child",
+        "note": "Funded but failed",
+    },
+    # p3_startup_slow → children (sum = 1.0)
+    {
+        "source_id": "p3_startup_slow",
+        "target_id": "p4_startup_lifestyle",
+        "probability": 0.30,
+        "link_type": "child",
+        "note": "Becomes lifestyle biz",
+    },
+    {
+        "source_id": "p3_startup_slow",
+        "target_id": "p4_startup_pivot_remote",
+        "probability": 0.35,
+        "link_type": "child",
+        "note": "Pivot to remote job using portfolio",
+    },
+    {
+        "source_id": "p3_startup_slow",
+        "target_id": "p4_startup_abandoned",
+        "probability": 0.35,
+        "link_type": "child",
+        "note": "Abandon startup",
+    },
+    # p3_startup_failed → children (sum = 1.0)
+    {
+        "source_id": "p3_startup_failed",
+        "target_id": "p4_startup_pivot_remote",
+        "probability": 0.45,
+        "link_type": "child",
+        "note": "Portfolio helps get remote job",
+    },
+    {
+        "source_id": "p3_startup_failed",
+        "target_id": "p4_startup_abandoned",
+        "probability": 0.55,
+        "link_type": "child",
+        "note": "Back to career track",
+    },
+    # ═══════════════════════════════════════════════════════════
+    # FREELANCE EDGES
+    # ═══════════════════════════════════════════════════════════
+    # p1_freelance → children (sum = 1.0)
+    {
+        "source_id": "p1_freelance",
+        "target_id": "p2_freelance_platform",
+        "probability": 0.45,
+        "link_type": "child",
+        "note": "Platform-based freelancing",
+    },
+    {
+        "source_id": "p1_freelance",
+        "target_id": "p2_freelance_direct",
+        "probability": 0.30,
+        "link_type": "child",
+        "note": "Direct client acquisition",
+    },
+    {
+        "source_id": "p1_freelance",
+        "target_id": "p2_freelance_agency",
+        "probability": 0.25,
+        "link_type": "child",
+        "note": "Build consultancy/agency",
+    },
+    # p2_freelance_platform → children (sum = 1.0)
+    {
+        "source_id": "p2_freelance_platform",
+        "target_id": "p3_freelance_fulltime",
+        "probability": 0.30,
+        "link_type": "child",
+        "note": "Quit job, freelance full-time",
+    },
+    {
+        "source_id": "p2_freelance_platform",
+        "target_id": "p3_freelance_side",
+        "probability": 0.40,
+        "link_type": "child",
+        "note": "Keep job + steady freelance",
+    },
+    {
+        "source_id": "p2_freelance_platform",
+        "target_id": "p3_freelance_dried",
+        "probability": 0.30,
+        "link_type": "child",
+        "note": "Clients dried up / burnout",
+    },
+    # p2_freelance_direct → children (sum = 1.0)
+    {
+        "source_id": "p2_freelance_direct",
+        "target_id": "p3_freelance_fulltime",
+        "probability": 0.35,
+        "link_type": "child",
+        "note": "Quit job, freelance full-time",
+    },
+    {
+        "source_id": "p2_freelance_direct",
+        "target_id": "p3_freelance_side",
+        "probability": 0.40,
+        "link_type": "child",
+        "note": "Keep job + steady freelance",
+    },
+    {
+        "source_id": "p2_freelance_direct",
+        "target_id": "p3_freelance_dried",
+        "probability": 0.25,
+        "link_type": "child",
+        "note": "Clients dried up",
+    },
+    # p2_freelance_agency → children (sum = 1.0)
+    {
+        "source_id": "p2_freelance_agency",
+        "target_id": "p3_freelance_fulltime",
+        "probability": 0.40,
+        "link_type": "child",
+        "note": "Agency goes full-time",
+    },
+    {
+        "source_id": "p2_freelance_agency",
+        "target_id": "p3_freelance_side",
+        "probability": 0.35,
+        "link_type": "child",
+        "note": "Keep job + agency side",
+    },
+    {
+        "source_id": "p2_freelance_agency",
+        "target_id": "p3_freelance_dried",
+        "probability": 0.25,
+        "link_type": "child",
+        "note": "Agency fails / burnout",
+    },
+    # p3_freelance_fulltime → children (sum = 1.0)
+    {
+        "source_id": "p3_freelance_fulltime",
+        "target_id": "p4_freelance_premium",
+        "probability": 0.25,
+        "link_type": "child",
+        "note": "Premium AI consultant",
+    },
+    {
+        "source_id": "p3_freelance_fulltime",
+        "target_id": "p4_freelance_stable",
+        "probability": 0.55,
+        "link_type": "child",
+        "note": "Stable freelancer",
+    },
+    {
+        "source_id": "p3_freelance_fulltime",
+        "target_id": "p4_freelance_burnout",
+        "probability": 0.20,
+        "link_type": "child",
+        "note": "Burnout, return to employment",
+    },
+    # p3_freelance_side → children (sum = 1.0)
+    {
+        "source_id": "p3_freelance_side",
+        "target_id": "p4_freelance_stable",
+        "probability": 0.40,
+        "link_type": "child",
+        "note": "Continue stable freelancing",
+    },
+    {
+        "source_id": "p3_freelance_side",
+        "target_id": "p4_freelance_to_remote",
+        "probability": 0.35,
+        "link_type": "child",
+        "note": "Convert to full-time remote",
+    },
+    {
+        "source_id": "p3_freelance_side",
+        "target_id": "p4_freelance_burnout",
+        "probability": 0.25,
+        "link_type": "child",
+        "note": "Burnout from dual workload",
+    },
+    # p3_freelance_dried → children (sum = 1.0)
+    {
+        "source_id": "p3_freelance_dried",
+        "target_id": "p4_freelance_to_remote",
+        "probability": 0.55,
+        "link_type": "child",
+        "note": "Freelance rep helps get remote",
+    },
+    {
+        "source_id": "p3_freelance_dried",
+        "target_id": "p4_freelance_burnout",
+        "probability": 0.45,
+        "link_type": "child",
+        "note": "Burnout, back to employment",
+    },
+    # ═══════════════════════════════════════════════════════════════════════
+    # CROSS-PATH TRANSITION EDGES
+    # These use link_type != 'child' and have independent probabilities
+    # (NOT summed with child edges). P = likelihood of taking this pivot
+    # given you reached the source node.
+    # ═══════════════════════════════════════════════════════════════════════
+    # ─── Category A: Startup → Freelance / Career ───
+    # Failed startup founders have shipped products, have portfolios,
+    # understand customer problems — valuable for freelancing and career pivots.
+    {
+        "source_id": "p3_startup_failed",
+        "target_id": "p2_freelance_direct",
+        "probability": 0.35,
+        "link_type": "transition",
+        "note": "Failed startup → direct freelancing; shipped products = strong portfolio for client work",
+    },
+    {
+        "source_id": "p3_startup_slow",
+        "target_id": "p2_freelance_platform",
+        "probability": 0.25,
+        "link_type": "transition",
+        "note": "Low-traction startup → platform freelancing; real project portfolio attracts clients",
+    },
+    {
+        "source_id": "p4_startup_abandoned",
+        "target_id": "p2_l4_remoteUSD",
+        "probability": 0.40,
+        "link_type": "fallback",
+        "note": "Abandoned startup → remote career; AI/product experience strengthens remote applications",
+    },
+    {
+        "source_id": "p4_startup_pivot_remote",
+        "target_id": "p4_remote_stable_senior",
+        "probability": 0.55,
+        "link_type": "transition",
+        "note": "Startup portfolio → remote senior role; this node conceptually IS a career transition",
+    },
+    # ─── Category B: Trading → Career ───
+    # Algo trading skills translate to quant/ML roles. Failed traders
+    # return to career path with market domain knowledge.
+    {
+        "source_id": "p3_trade_algo_edge",
+        "target_id": "p4_remote_staff",
+        "probability": 0.20,
+        "link_type": "transition",
+        "note": "Algo trading edge + ML skills → remote staff ML/quant role at fintech or trading firm",
+    },
+    {
+        "source_id": "p4_trade_quit",
+        "target_id": "p2_l4_remoteUSD",
+        "probability": 0.45,
+        "link_type": "fallback",
+        "note": "Quit trading → remote career; market knowledge + ML background opens fintech/data roles",
+    },
+    {
+        "source_id": "p4_trade_quant_fund",
+        "target_id": "p4_remote_staff",
+        "probability": 0.30,
+        "link_type": "transition",
+        "note": "Quant fund role is effectively a top-tier remote career in quantitative finance",
+    },
+    # ─── Category C: Freelance → Career ───
+    # Freelancing builds reputation and client network that translates
+    # to full-time remote roles or re-entry into employment.
+    {
+        "source_id": "p4_freelance_to_remote",
+        "target_id": "p4_remote_stable_senior",
+        "probability": 0.60,
+        "link_type": "transition",
+        "note": "Freelance reputation → full-time remote senior; clients often convert freelancers to FTEs",
+    },
+    {
+        "source_id": "p4_freelance_burnout",
+        "target_id": "p2_l4_switchlocal",
+        "probability": 0.50,
+        "link_type": "fallback",
+        "note": "Freelance burnout → local employment; re-enter with senior-level negotiating leverage",
+    },
+    {
+        "source_id": "p3_freelance_fulltime",
+        "target_id": "p2_startup_ai_saas",
+        "probability": 0.20,
+        "link_type": "transition",
+        "note": "Full-time freelancer → AI SaaS startup; recurring client problems inspire productization",
+    },
+    # ─── Category D: Career → Freelance / Startup ───
+    # Career plateaus and frustrations drive engineers to explore
+    # freelancing or startup paths as side hustles or full pivots.
+    {
+        "source_id": "p3_l5_stalled_motive",
+        "target_id": "p1_freelance",
+        "probability": 0.25,
+        "link_type": "transition",
+        "note": "Stalled at L4 Motive → freelancing side hustle; 4yr AI experience = marketable skills",
+    },
+    {
+        "source_id": "p3_l5_stalled_motive",
+        "target_id": "p1_startup",
+        "probability": 0.15,
+        "link_type": "transition",
+        "note": "Stalled at L4 Motive → startup side hustle; frustration channels into building products",
+    },
+    {
+        "source_id": "p3_teamswitch_stuck",
+        "target_id": "p1_freelance",
+        "probability": 0.20,
+        "link_type": "transition",
+        "note": "Stuck at low level after team switch → freelancing; ML skills undervalued internally",
+    },
+    {
+        "source_id": "p3_retry_failed_leave",
+        "target_id": "p1_startup",
+        "probability": 0.20,
+        "link_type": "transition",
+        "note": "Failed promotion twice → leave Motive and channel into startup; nothing left to lose",
+    },
+    # ─── Category E: Trading → Startup ───
+    # Trading profits provide capital runway to bootstrap a startup
+    # without needing external funding.
+    {
+        "source_id": "p3_trade_profitable",
+        "target_id": "p1_startup",
+        "probability": 0.15,
+        "link_type": "enables",
+        "note": "Consistent trading profits → bootstrap startup; trading capital funds product development",
+    },
+    {
+        "source_id": "p4_trade_sideincome",
+        "target_id": "p2_startup_ai_saas",
+        "probability": 0.15,
+        "link_type": "enables",
+        "note": "Trading side income → AI SaaS startup; financial runway from trading reduces startup risk",
+    },
+    # ─── Category F: Freelance → Startup ───
+    # Freelancing exposes you to recurring client problems and builds
+    # domain expertise — natural foundation for productization.
+    {
+        "source_id": "p3_freelance_side",
+        "target_id": "p2_startup_ai_saas",
+        "probability": 0.20,
+        "link_type": "transition",
+        "note": "Side freelancing → AI SaaS; recurring client problems inspire productized solutions",
+    },
+    {
+        "source_id": "p4_freelance_premium",
+        "target_id": "p2_startup_devtools",
+        "probability": 0.15,
+        "link_type": "transition",
+        "note": "Premium consultant → dev tools startup; sees patterns across clients, automates them",
+    },
+    {
+        "source_id": "p3_freelance_fulltime",
+        "target_id": "p2_startup_general",
+        "probability": 0.15,
+        "link_type": "transition",
+        "note": "Full-time freelancer → micro-SaaS; reduce client dependency with a product",
     },
 ]
 
 
 def import_career_nodes():
-    """Import all career nodes into the database."""
+    """Import all career nodes and edges into the database."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # Clear existing career nodes
+    # ─── Import career nodes ───
     cursor.execute("DELETE FROM career_nodes")
-    print(f"Cleared existing career_nodes table")
+    print("Cleared existing career_nodes table")
 
-    # Insert all nodes
     for node in CAREER_NODES:
         cursor.execute(
             """
-            INSERT INTO career_nodes (id, phase, label, salary, probability, color, note, children, node_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO career_nodes (
+                id, phase, label, salary, probability, color, note, children, node_type,
+                income_floor_usd, income_ceiling_usd, initial_capital_usd,
+                ongoing_cost_usd, y1_income_usd, y5_income_usd, y10_income_usd
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 node["id"],
@@ -1085,14 +2792,40 @@ def import_career_nodes():
                 node.get("note"),
                 json.dumps(node.get("children", [])),
                 node.get("node_type", "career"),
+                node.get("income_floor_usd"),
+                node.get("income_ceiling_usd"),
+                node.get("initial_capital_usd"),
+                node.get("ongoing_cost_usd"),
+                node.get("y1_income_usd"),
+                node.get("y5_income_usd"),
+                node.get("y10_income_usd"),
+            ),
+        )
+
+    # ─── Import edges ───
+    cursor.execute("DELETE FROM edges")
+    print("Cleared existing edges table")
+
+    for edge in EDGES:
+        cursor.execute(
+            """
+            INSERT INTO edges (source_id, target_id, probability, link_type, note)
+            VALUES (?, ?, ?, ?, ?)
+        """,
+            (
+                edge["source_id"],
+                edge["target_id"],
+                edge["probability"],
+                edge["link_type"],
+                edge.get("note"),
             ),
         )
 
     conn.commit()
 
-    # Verify
+    # ─── Verify nodes ───
     cursor.execute("SELECT COUNT(*) FROM career_nodes")
-    total = cursor.fetchone()[0]
+    total_nodes = cursor.fetchone()[0]
 
     cursor.execute(
         "SELECT node_type, COUNT(*) FROM career_nodes GROUP BY node_type ORDER BY node_type"
@@ -1104,15 +2837,50 @@ def import_career_nodes():
     )
     by_phase = cursor.fetchall()
 
+    # ─── Verify edges ───
+    cursor.execute("SELECT COUNT(*) FROM edges")
+    total_edges = cursor.fetchone()[0]
+
+    cursor.execute(
+        "SELECT link_type, COUNT(*) FROM edges GROUP BY link_type ORDER BY link_type"
+    )
+    edges_by_type = cursor.fetchall()
+
+    # ─── Validate edge probability sums ───
+    cursor.execute("""
+        SELECT source_id, SUM(probability) as total_prob
+        FROM edges
+        WHERE link_type = 'child'
+        GROUP BY source_id
+        HAVING ABS(total_prob - 1.0) > 0.001
+    """)
+    bad_sums = cursor.fetchall()
+
     conn.close()
 
-    print(f"\n✅ Imported {total} career nodes into {DB_PATH}")
+    print(f"\n{'=' * 50}")
+    print(f"Imported {total_nodes} career nodes into {DB_PATH}")
     print(f"\nBy type:")
     for node_type, count in by_type:
         print(f"  {node_type}: {count}")
     print(f"\nBy phase:")
     for phase, count in by_phase:
         print(f"  Phase {phase}: {count}")
+
+    print(f"\n{'=' * 50}")
+    print(f"Imported {total_edges} edges into {DB_PATH}")
+    print(f"\nBy link_type:")
+    for link_type, count in edges_by_type:
+        print(f"  {link_type}: {count}")
+
+    if bad_sums:
+        print(
+            f"\nWARNING: {len(bad_sums)} parent(s) have children probabilities that don't sum to 1.0:"
+        )
+        for source_id, total_prob in bad_sums:
+            print(f"  {source_id}: sum = {total_prob:.4f}")
+    else:
+        print(f"\nAll parent→child probability sums validated (= 1.0)")
 
 
 if __name__ == "__main__":

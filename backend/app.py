@@ -273,9 +273,43 @@ def get_edges():
       - target_id: Filter by target node ID
       - link_type: Filter by link type (child, transition, enables, fallback)
       - node_type: Filter edges where source node matches this node_type
+      - calibrated: If "true", apply profile-based probability calibration
     """
     conn = get_db()
     cursor = conn.cursor()
+
+    # Check if calibrated edges requested
+    if request.args.get("calibrated", "").lower() == "true":
+        from profile_calibrator import calibrate_edges, get_profile
+
+        profile = get_profile(conn)
+        all_edges = calibrate_edges(profile=profile, conn=conn)
+
+        # Apply filters
+        edges = all_edges
+        if request.args.get("source_id"):
+            edges = [
+                e for e in edges if e["source_id"] == request.args.get("source_id")
+            ]
+        if request.args.get("target_id"):
+            edges = [
+                e for e in edges if e["target_id"] == request.args.get("target_id")
+            ]
+        if request.args.get("link_type"):
+            edges = [
+                e for e in edges if e["link_type"] == request.args.get("link_type")
+            ]
+        if request.args.get("node_type"):
+            # Need to look up which nodes match the node_type
+            cursor.execute(
+                "SELECT id FROM career_nodes WHERE node_type = ?",
+                (request.args.get("node_type"),),
+            )
+            valid_sources = {row["id"] for row in cursor.fetchall()}
+            edges = [e for e in edges if e["source_id"] in valid_sources]
+
+        conn.close()
+        return jsonify({"count": len(edges), "edges": edges, "calibrated": True})
 
     query = "SELECT e.* FROM edges e WHERE 1=1"
     params = []
@@ -305,6 +339,79 @@ def get_edges():
     conn.close()
 
     return jsonify({"count": len(edges), "edges": edges})
+
+
+@app.route("/api/profile", methods=["GET"])
+def get_profile():
+    """
+    Get the current user profile used for probability calibration.
+    Returns all 13 profile factors with their current values.
+    """
+    from profile_calibrator import get_profile as _get_profile
+
+    conn = get_db()
+    profile = _get_profile(conn)
+    conn.close()
+
+    return jsonify({"profile": profile})
+
+
+@app.route("/api/profile", methods=["PUT"])
+def update_profile():
+    """
+    Update user profile for probability calibration.
+    Accepts partial updates — only provided fields are changed.
+
+    Body (JSON): any subset of profile fields:
+      - years_experience: float (>= 0)
+      - performance_rating: "top" | "strong" | "average" | "below"
+      - risk_tolerance: "high" | "moderate" | "low"
+      - available_savings_usd: int (>= 0)
+      - english_level: "native" | "professional" | "intermediate" | "basic"
+      - gpa: float (0-4.0) or null
+      - gre_score: int (260-340) or null
+      - ielts_score: float (0-9.0) or null
+      - has_publications: 0 | 1
+      - has_freelance_profile: 0 | 1
+      - has_side_projects: 0 | 1
+      - quant_aptitude: "strong" | "moderate" | "weak"
+      - current_salary_pkr: int (>= 0)
+    """
+    from profile_calibrator import save_profile, get_profile as _get_profile
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Request body must be JSON"}), 400
+
+    conn = get_db()
+
+    try:
+        # Load current profile, merge with updates
+        current = _get_profile(conn)
+        current.update(data)
+        saved = save_profile(current, conn)
+    except ValueError as e:
+        conn.close()
+        return jsonify({"error": str(e)}), 400
+
+    conn.close()
+
+    return jsonify({"profile": saved, "message": "Profile updated"})
+
+
+@app.route("/api/calibration-summary", methods=["GET"])
+def get_calibration_summary():
+    """
+    Get a summary of how the current profile affects edge probabilities.
+    Shows which edges changed and by how much.
+    """
+    from profile_calibrator import get_calibration_summary as _get_summary
+
+    conn = get_db()
+    summary = _get_summary(conn=conn)
+    conn.close()
+
+    return jsonify(summary)
 
 
 @app.route("/api/search", methods=["GET"])
@@ -513,6 +620,163 @@ def get_program_networth(program_id):
     return jsonify(result)
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Career Path Net Worth Endpoints (Trading / Startup / Freelance / Career)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@app.route("/api/networth/career", methods=["GET"])
+def get_career_networth():
+    """
+    Calculate 10-year net worth for all career path nodes.
+    These are non-masters paths (career, trading, startup, freelance)
+    that stay in Pakistan.
+
+    Query params (all optional):
+      - node_type: Filter by type — "career", "trading", "startup", "freelance"
+      - leaf_only: If "true" (default), only calculate for leaf nodes
+      - lifestyle: Living cost tier — "frugal" or "comfortable" (default: frugal)
+      - family_year: Calendar year for single→family transition, 1-10
+          (default: 3, 11=never)
+      - sort_by: Sort field — net_benefit, y1, y10, networth (default: net_benefit)
+      - limit: Max results (default: all)
+      - compact: If "true", omit yearly breakdowns (default: false)
+    """
+    from career_networth_calculator import calculate_all_career_paths
+
+    # Parse node_type filter
+    node_type = request.args.get("node_type")
+    if node_type and node_type not in ("career", "trading", "startup", "freelance"):
+        return jsonify(
+            {
+                "error": "node_type must be 'career', 'trading', 'startup', or 'freelance'"
+            }
+        ), 400
+
+    # Parse leaf_only
+    leaf_only = request.args.get("leaf_only", "true").lower() != "false"
+
+    # Parse lifestyle tier
+    lifestyle = request.args.get("lifestyle", "frugal")
+    if lifestyle not in ("frugal", "comfortable"):
+        return jsonify({"error": "lifestyle must be 'frugal' or 'comfortable'"}), 400
+
+    # Parse family transition year
+    family_transition_year = None
+    if request.args.get("family_year"):
+        try:
+            family_transition_year = int(request.args.get("family_year"))
+            if not (1 <= family_transition_year <= 11):
+                return jsonify(
+                    {"error": "family_year must be between 1 and 11 (11 = never)"}
+                ), 400
+        except (ValueError, TypeError):
+            return jsonify(
+                {"error": "family_year must be an integer between 1 and 11"}
+            ), 400
+
+    data = calculate_all_career_paths(
+        node_type=node_type,
+        leaf_only=leaf_only,
+        lifestyle=lifestyle,
+        family_transition_year=family_transition_year,
+    )
+
+    # Sort
+    results = data["results"]
+    sort_key = request.args.get("sort_by", "net_benefit")
+    sort_map = {
+        "net_benefit": "net_benefit_k",
+        "y1": "y1_income_k",
+        "y10": "y10_income_k",
+        "networth": "path_networth_k",
+    }
+    key = sort_map.get(sort_key, "net_benefit_k")
+    results.sort(key=lambda x: x.get(key, 0), reverse=True)
+
+    # Limit
+    if request.args.get("limit"):
+        results = results[: int(request.args.get("limit"))]
+
+    # Compact mode — strip yearly breakdowns
+    if request.args.get("compact", "").lower() == "true":
+        for r in results:
+            r.pop("yearly_breakdown", None)
+
+    data["results"] = results
+    data["summary"]["total_filtered"] = len(results)
+
+    return jsonify(data)
+
+
+@app.route("/api/networth/career/<string:node_id>", methods=["GET"])
+def get_career_node_networth(node_id):
+    """
+    Calculate 10-year net worth for a specific career node by ID.
+
+    Query params (all optional):
+      - lifestyle: Living cost tier — "frugal" or "comfortable" (default: frugal)
+      - family_year: Calendar year for single→family transition, 1-10
+          (default: 3, 11=never)
+    """
+    from career_networth_calculator import (
+        calculate_career_node_networth,
+        calculate_career_baseline,
+    )
+
+    # Parse lifestyle tier
+    lifestyle = request.args.get("lifestyle", "frugal")
+    if lifestyle not in ("frugal", "comfortable"):
+        return jsonify({"error": "lifestyle must be 'frugal' or 'comfortable'"}), 400
+
+    # Parse family transition year
+    family_transition_year = None
+    if request.args.get("family_year"):
+        try:
+            family_transition_year = int(request.args.get("family_year"))
+            if not (1 <= family_transition_year <= 11):
+                return jsonify(
+                    {"error": "family_year must be between 1 and 11 (11 = never)"}
+                ), 400
+        except (ValueError, TypeError):
+            return jsonify(
+                {"error": "family_year must be an integer between 1 and 11"}
+            ), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM career_nodes WHERE id = ?", (node_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return jsonify({"error": f"Career node '{node_id}' not found"}), 404
+
+    node = dict(row)
+
+    # Check node has income data
+    if not node.get("y1_income_usd") and not node.get("y10_income_usd"):
+        return jsonify(
+            {
+                "error": f"Career node '{node_id}' has no income data for net worth calculation"
+            }
+        ), 400
+
+    baseline = calculate_career_baseline(
+        lifestyle=lifestyle,
+        family_transition_year=family_transition_year,
+    )
+    result = calculate_career_node_networth(
+        node,
+        baseline["total_networth_k"],
+        lifestyle=lifestyle,
+        family_transition_year=family_transition_year,
+    )
+    result["baseline"] = baseline
+
+    return jsonify(result)
+
+
 if __name__ == "__main__":
     print("🚀 Starting Career Tree API...")
     print("📍 API will be available at: http://localhost:5000")
@@ -525,12 +789,19 @@ if __name__ == "__main__":
     print("   GET  /api/career-nodes/<id>")
     print("   GET  /api/edges")
     print("   GET  /api/edges?link_type=<type>&source_id=<id>&node_type=<type>")
+    print("   GET  /api/edges?calibrated=true")
+    print("   GET  /api/profile")
+    print("   PUT  /api/profile")
+    print("   GET  /api/calibration-summary")
     print("   GET  /api/universities")
     print("   GET  /api/stats")
     print("   GET  /api/search?q=<query>")
     print("   GET  /api/networth")
     print("   GET  /api/networth?field=AI/ML&sort_by=net_benefit&compact=true")
     print("   GET  /api/networth/<program_id>")
+    print("   GET  /api/networth/career")
+    print("   GET  /api/networth/career?node_type=trading&compact=true")
+    print("   GET  /api/networth/career/<node_id>")
     print("\n🔗 Test it: http://localhost:5000/api/career-nodes\n")
 
     app.run(debug=True, host="0.0.0.0", port=5000)
