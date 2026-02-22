@@ -15,12 +15,11 @@ The function returns the annual after-tax income in $K USD.
 """
 
 import sqlite3
-from pathlib import Path
 from typing import Optional
 
 # ─── Database Loading ────────────────────────────────────────────────────────
 
-DB_PATH = Path(__file__).parent / "career_tree.db"
+from config import DB_PATH
 
 
 def _load_exchange_rates() -> dict[str, float]:

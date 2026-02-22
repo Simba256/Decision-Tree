@@ -8,9 +8,10 @@ Usage: python3 import_career_nodes.py
 
 import sqlite3
 import json
-from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "career_tree.db"
+from config import DB_PATH, get_logger
+
+logger = get_logger(__name__)
 
 # ═══════════════════════════════════════════════════════════════
 # All career tree nodes (excluding root, which stays in frontend)
@@ -2770,7 +2771,7 @@ def import_career_nodes():
 
     # ─── Import career nodes ───
     cursor.execute("DELETE FROM career_nodes")
-    print("Cleared existing career_nodes table")
+    logger.info("Cleared existing career_nodes table")
 
     for node in CAREER_NODES:
         cursor.execute(
@@ -2804,7 +2805,7 @@ def import_career_nodes():
 
     # ─── Import edges ───
     cursor.execute("DELETE FROM edges")
-    print("Cleared existing edges table")
+    logger.info("Cleared existing edges table")
 
     for edge in EDGES:
         cursor.execute(
@@ -2858,29 +2859,25 @@ def import_career_nodes():
 
     conn.close()
 
-    print(f"\n{'=' * 50}")
-    print(f"Imported {total_nodes} career nodes into {DB_PATH}")
-    print(f"\nBy type:")
+    logger.info("Imported %d career nodes into %s", total_nodes, DB_PATH)
     for node_type, count in by_type:
-        print(f"  {node_type}: {count}")
-    print(f"\nBy phase:")
+        logger.info("  %s: %d", node_type, count)
     for phase, count in by_phase:
-        print(f"  Phase {phase}: {count}")
+        logger.info("  Phase %s: %d", phase, count)
 
-    print(f"\n{'=' * 50}")
-    print(f"Imported {total_edges} edges into {DB_PATH}")
-    print(f"\nBy link_type:")
+    logger.info("Imported %d edges into %s", total_edges, DB_PATH)
     for link_type, count in edges_by_type:
-        print(f"  {link_type}: {count}")
+        logger.info("  %s: %d", link_type, count)
 
     if bad_sums:
-        print(
-            f"\nWARNING: {len(bad_sums)} parent(s) have children probabilities that don't sum to 1.0:"
+        logger.warning(
+            "%d parent(s) have children probabilities that don't sum to 1.0:",
+            len(bad_sums),
         )
         for source_id, total_prob in bad_sums:
-            print(f"  {source_id}: sum = {total_prob:.4f}")
+            logger.warning("  %s: sum = %.4f", source_id, total_prob)
     else:
-        print(f"\nAll parent→child probability sums validated (= 1.0)")
+        logger.info("All parent->child probability sums validated (= 1.0)")
 
 
 if __name__ == "__main__":

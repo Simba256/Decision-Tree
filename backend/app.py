@@ -5,21 +5,107 @@ Serves program data from SQLite database
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-import sqlite3
 import json
-from pathlib import Path
+from typing import Optional, Tuple, Union
+
+from config import get_db, setup_logging, get_logger
+
+setup_logging()
+logger = get_logger(__name__)
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for React frontend
 
-DB_PATH = Path(__file__).parent / "career_tree.db"
+
+# ─── Global Error Handlers ───────────────────────────────────────────────────
 
 
-def get_db():
-    """Get database connection"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row  # Return rows as dictionaries
-    return conn
+@app.errorhandler(404)
+def not_found(e):
+    """Return JSON instead of HTML for 404 errors."""
+    return jsonify({"error": "Resource not found"}), 404
+
+
+@app.errorhandler(ValueError)
+def handle_value_error(e):
+    """Catch unhandled ValueErrors and return a 400 JSON response."""
+    logger.warning("ValueError: %s", e)
+    return jsonify({"error": str(e)}), 400
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Catch-all for unhandled exceptions — return a 500 JSON response."""
+    logger.exception("Unhandled exception: %s", e)
+    return jsonify({"error": "Internal server error"}), 500
+
+
+# ─── Request Validation Helpers ──────────────────────────────────────────────
+
+
+def _parse_lifestyle() -> Union[str, Tuple]:
+    """
+    Parse and validate the 'lifestyle' query parameter.
+    Returns the validated string, or a (jsonify(...), 400) error tuple.
+    """
+    lifestyle = request.args.get("lifestyle", "frugal")
+    if lifestyle not in ("frugal", "comfortable"):
+        return jsonify({"error": "lifestyle must be 'frugal' or 'comfortable'"}), 400
+    return lifestyle
+
+
+def _parse_family_year(max_year: int = 13) -> Union[Optional[int], Tuple]:
+    """
+    Parse and validate the 'family_year' query parameter.
+    Returns the validated int (or None), or a (jsonify(...), 400) error tuple.
+
+    Args:
+        max_year: Upper bound for family_year (13 for masters, 11 for career paths).
+    """
+    raw = request.args.get("family_year")
+    if not raw:
+        return None
+    try:
+        family_year = int(raw)
+        if not (1 <= family_year <= max_year):
+            return jsonify(
+                {
+                    "error": f"family_year must be between 1 and {max_year} ({max_year} = never)"
+                }
+            ), 400
+        return family_year
+    except (ValueError, TypeError):
+        return jsonify(
+            {"error": f"family_year must be an integer between 1 and {max_year}"}
+        ), 400
+
+
+def _parse_int_param(name: str) -> Union[Optional[int], Tuple]:
+    """
+    Parse an optional integer query parameter safely.
+    Returns the validated int (or None), or a (jsonify(...), 400) error tuple.
+    """
+    raw = request.args.get(name)
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        return jsonify({"error": f"'{name}' must be a valid integer"}), 400
+
+
+def _parse_float_param(name: str) -> Union[Optional[float], Tuple]:
+    """
+    Parse an optional float query parameter safely.
+    Returns the validated float (or None), or a (jsonify(...), 400) error tuple.
+    """
+    raw = request.args.get(name)
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except (ValueError, TypeError):
+        return jsonify({"error": f"'{name}' must be a valid number"}), 400
 
 
 @app.route("/api/health", methods=["GET"])
@@ -39,53 +125,64 @@ def get_programs():
       - max_tuition: Max tuition in USD (thousands)
       - min_y10_salary: Min year 10 salary (thousands)
     """
-    conn = get_db()
-    cursor = conn.cursor()
-
-    # Base query
-    query = """
-        SELECT
-            p.id, p.program_name, p.field, p.tuition_usd,
-            p.y1_salary_usd, p.y5_salary_usd, p.y10_salary_usd,
-            p.p90_y10_usd, p.net_10yr_usd, p.funding_tier,
-            p.primary_market, p.key_employers, p.notes,
-            u.name as university_name, u.country, u.region, u.tier as university_tier
-        FROM programs p
-        JOIN universities u ON p.university_id = u.id
-        WHERE 1=1
-    """
-
-    params = []
-
-    # Apply filters
-    if request.args.get("field"):
-        query += " AND p.field = ?"
-        params.append(request.args.get("field"))
-
-    if request.args.get("funding_tier"):
-        query += " AND p.funding_tier = ?"
-        params.append(request.args.get("funding_tier"))
-
-    if request.args.get("country"):
-        query += " AND u.country = ?"
-        params.append(request.args.get("country"))
-
+    # Validate params before opening connection
+    max_tuition = None
     if request.args.get("max_tuition"):
-        query += " AND p.tuition_usd <= ?"
-        params.append(int(request.args.get("max_tuition")))
+        max_tuition = _parse_int_param("max_tuition")
+        if isinstance(max_tuition, tuple):
+            return max_tuition
 
+    min_salary = None
     if request.args.get("min_y10_salary"):
-        query += " AND p.y10_salary_usd >= ?"
-        params.append(int(request.args.get("min_y10_salary")))
+        min_salary = _parse_int_param("min_y10_salary")
+        if isinstance(min_salary, tuple):
+            return min_salary
 
-    # Execute query
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
+    with get_db() as conn:
+        cursor = conn.cursor()
 
-    # Convert to list of dicts
-    programs = [dict(row) for row in rows]
+        # Base query
+        query = """
+            SELECT
+                p.id, p.program_name, p.field, p.tuition_usd,
+                p.y1_salary_usd, p.y5_salary_usd, p.y10_salary_usd,
+                p.p90_y10_usd, p.net_10yr_usd, p.funding_tier,
+                p.primary_market, p.key_employers, p.notes,
+                u.name as university_name, u.country, u.region, u.tier as university_tier
+            FROM programs p
+            JOIN universities u ON p.university_id = u.id
+            WHERE 1=1
+        """
 
-    conn.close()
+        params = []
+
+        # Apply filters
+        if request.args.get("field"):
+            query += " AND p.field = ?"
+            params.append(request.args.get("field"))
+
+        if request.args.get("funding_tier"):
+            query += " AND p.funding_tier = ?"
+            params.append(request.args.get("funding_tier"))
+
+        if request.args.get("country"):
+            query += " AND u.country = ?"
+            params.append(request.args.get("country"))
+
+        if max_tuition is not None:
+            query += " AND p.tuition_usd <= ?"
+            params.append(max_tuition)
+
+        if min_salary is not None:
+            query += " AND p.y10_salary_usd >= ?"
+            params.append(min_salary)
+
+        # Execute query
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        # Convert to list of dicts
+        programs = [dict(row) for row in rows]
 
     return jsonify({"count": len(programs), "programs": programs})
 
@@ -93,22 +190,21 @@ def get_programs():
 @app.route("/api/programs/<int:program_id>", methods=["GET"])
 def get_program(program_id):
     """Get a specific program by ID"""
-    conn = get_db()
-    cursor = conn.cursor()
+    with get_db() as conn:
+        cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        SELECT
-            p.*, u.name as university_name, u.country, u.region, u.tier as university_tier
-        FROM programs p
-        JOIN universities u ON p.university_id = u.id
-        WHERE p.id = ?
-    """,
-        (program_id,),
-    )
+        cursor.execute(
+            """
+            SELECT
+                p.*, u.name as university_name, u.country, u.region, u.tier as university_tier
+            FROM programs p
+            JOIN universities u ON p.university_id = u.id
+            WHERE p.id = ?
+        """,
+            (program_id,),
+        )
 
-    row = cursor.fetchone()
-    conn.close()
+        row = cursor.fetchone()
 
     if row:
         return jsonify(dict(row))
@@ -119,23 +215,21 @@ def get_program(program_id):
 @app.route("/api/universities", methods=["GET"])
 def get_universities():
     """Get all universities with program counts"""
-    conn = get_db()
-    cursor = conn.cursor()
+    with get_db() as conn:
+        cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT
-            u.id, u.name, u.country, u.region, u.tier,
-            COUNT(p.id) as program_count
-        FROM universities u
-        LEFT JOIN programs p ON u.id = p.university_id
-        GROUP BY u.id
-        ORDER BY program_count DESC, u.name
-    """)
+        cursor.execute("""
+            SELECT
+                u.id, u.name, u.country, u.region, u.tier,
+                COUNT(p.id) as program_count
+            FROM universities u
+            LEFT JOIN programs p ON u.id = p.university_id
+            GROUP BY u.id
+            ORDER BY program_count DESC, u.name
+        """)
 
-    rows = cursor.fetchall()
-    universities = [dict(row) for row in rows]
-
-    conn.close()
+        rows = cursor.fetchall()
+        universities = [dict(row) for row in rows]
 
     return jsonify({"count": len(universities), "universities": universities})
 
@@ -143,59 +237,57 @@ def get_universities():
 @app.route("/api/stats", methods=["GET"])
 def get_stats():
     """Get summary statistics"""
-    conn = get_db()
-    cursor = conn.cursor()
+    with get_db() as conn:
+        cursor = conn.cursor()
 
-    # Total counts
-    cursor.execute("SELECT COUNT(*) FROM programs")
-    total_programs = cursor.fetchone()[0]
+        # Total counts
+        cursor.execute("SELECT COUNT(*) FROM programs")
+        total_programs = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM universities")
-    total_universities = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM universities")
+        total_universities = cursor.fetchone()[0]
 
-    # By funding tier
-    cursor.execute("""
-        SELECT funding_tier, COUNT(*) as count
-        FROM programs
-        GROUP BY funding_tier
-    """)
-    by_tier = {row["funding_tier"]: row["count"] for row in cursor.fetchall()}
+        # By funding tier
+        cursor.execute("""
+            SELECT funding_tier, COUNT(*) as count
+            FROM programs
+            GROUP BY funding_tier
+        """)
+        by_tier = {row["funding_tier"]: row["count"] for row in cursor.fetchall()}
 
-    # By field
-    cursor.execute("""
-        SELECT field, COUNT(*) as count
-        FROM programs
-        GROUP BY field
-        ORDER BY count DESC
-    """)
-    by_field = [dict(row) for row in cursor.fetchall()]
+        # By field
+        cursor.execute("""
+            SELECT field, COUNT(*) as count
+            FROM programs
+            GROUP BY field
+            ORDER BY count DESC
+        """)
+        by_field = [dict(row) for row in cursor.fetchall()]
 
-    # By country (top 10)
-    cursor.execute("""
-        SELECT u.country, COUNT(p.id) as count
-        FROM universities u
-        JOIN programs p ON u.id = p.university_id
-        GROUP BY u.country
-        ORDER BY count DESC
-        LIMIT 10
-    """)
-    by_country = [dict(row) for row in cursor.fetchall()]
+        # By country (top 10)
+        cursor.execute("""
+            SELECT u.country, COUNT(p.id) as count
+            FROM universities u
+            JOIN programs p ON u.id = p.university_id
+            GROUP BY u.country
+            ORDER BY count DESC
+            LIMIT 10
+        """)
+        by_country = [dict(row) for row in cursor.fetchall()]
 
-    # Salary stats
-    cursor.execute("""
-        SELECT
-            MIN(y1_salary_usd) as min_y1,
-            MAX(y1_salary_usd) as max_y1,
-            AVG(y1_salary_usd) as avg_y1,
-            MIN(y10_salary_usd) as min_y10,
-            MAX(y10_salary_usd) as max_y10,
-            AVG(y10_salary_usd) as avg_y10
-        FROM programs
-        WHERE y1_salary_usd IS NOT NULL AND y10_salary_usd IS NOT NULL
-    """)
-    salary_stats = dict(cursor.fetchone())
-
-    conn.close()
+        # Salary stats
+        cursor.execute("""
+            SELECT
+                MIN(y1_salary_usd) as min_y1,
+                MAX(y1_salary_usd) as max_y1,
+                AVG(y1_salary_usd) as avg_y1,
+                MIN(y10_salary_usd) as min_y10,
+                MAX(y10_salary_usd) as max_y10,
+                AVG(y10_salary_usd) as avg_y10
+            FROM programs
+            WHERE y1_salary_usd IS NOT NULL AND y10_salary_usd IS NOT NULL
+        """)
+        salary_stats = dict(cursor.fetchone())
 
     return jsonify(
         {
@@ -216,31 +308,29 @@ def get_career_nodes():
     Query params:
       - node_type: Filter by type (career, trading, startup, freelance)
     """
-    conn = get_db()
-    cursor = conn.cursor()
+    with get_db() as conn:
+        cursor = conn.cursor()
 
-    query = "SELECT * FROM career_nodes WHERE 1=1"
-    params = []
+        query = "SELECT * FROM career_nodes WHERE 1=1"
+        params = []
 
-    if request.args.get("node_type"):
-        query += " AND node_type = ?"
-        params.append(request.args.get("node_type"))
+        if request.args.get("node_type"):
+            query += " AND node_type = ?"
+            params.append(request.args.get("node_type"))
 
-    query += " ORDER BY phase, id"
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
+        query += " ORDER BY phase, id"
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
 
-    # Convert to list of dicts, parse children JSON, map probability -> prob
-    nodes = []
-    for row in rows:
-        node = dict(row)
-        # Parse children from JSON string to array
-        node["children"] = json.loads(node.get("children") or "[]")
-        # Map probability -> prob for frontend compatibility
-        node["prob"] = node.pop("probability", None)
-        nodes.append(node)
-
-    conn.close()
+        # Convert to list of dicts, parse children JSON, map probability -> prob
+        nodes = []
+        for row in rows:
+            node = dict(row)
+            # Parse children from JSON string to array
+            node["children"] = json.loads(node.get("children") or "[]")
+            # Map probability -> prob for frontend compatibility
+            node["prob"] = node.pop("probability", None)
+            nodes.append(node)
 
     return jsonify({"count": len(nodes), "nodes": nodes})
 
@@ -248,12 +338,11 @@ def get_career_nodes():
 @app.route("/api/career-nodes/<string:node_id>", methods=["GET"])
 def get_career_node(node_id):
     """Get a specific career node by ID"""
-    conn = get_db()
-    cursor = conn.cursor()
+    with get_db() as conn:
+        cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM career_nodes WHERE id = ?", (node_id,))
-    row = cursor.fetchone()
-    conn.close()
+        cursor.execute("SELECT * FROM career_nodes WHERE id = ?", (node_id,))
+        row = cursor.fetchone()
 
     if row:
         node = dict(row)
@@ -275,68 +364,67 @@ def get_edges():
       - node_type: Filter edges where source node matches this node_type
       - calibrated: If "true", apply profile-based probability calibration
     """
-    conn = get_db()
-    cursor = conn.cursor()
+    with get_db() as conn:
+        cursor = conn.cursor()
 
-    # Check if calibrated edges requested
-    if request.args.get("calibrated", "").lower() == "true":
-        from profile_calibrator import calibrate_edges, get_profile
+        # Check if calibrated edges requested
+        if request.args.get("calibrated", "").lower() == "true":
+            from profile_calibrator import calibrate_edges, get_profile
 
-        profile = get_profile(conn)
-        all_edges = calibrate_edges(profile=profile, conn=conn)
+            profile = get_profile(conn)
+            all_edges = calibrate_edges(profile=profile, conn=conn)
 
-        # Apply filters
-        edges = all_edges
+            # Apply filters
+            edges = all_edges
+            if request.args.get("source_id"):
+                edges = [
+                    e for e in edges if e["source_id"] == request.args.get("source_id")
+                ]
+            if request.args.get("target_id"):
+                edges = [
+                    e for e in edges if e["target_id"] == request.args.get("target_id")
+                ]
+            if request.args.get("link_type"):
+                edges = [
+                    e for e in edges if e["link_type"] == request.args.get("link_type")
+                ]
+            if request.args.get("node_type"):
+                # Need to look up which nodes match the node_type
+                cursor.execute(
+                    "SELECT id FROM career_nodes WHERE node_type = ?",
+                    (request.args.get("node_type"),),
+                )
+                valid_sources = {row["id"] for row in cursor.fetchall()}
+                edges = [e for e in edges if e["source_id"] in valid_sources]
+
+            return jsonify({"count": len(edges), "edges": edges, "calibrated": True})
+
+        query = "SELECT e.* FROM edges e WHERE 1=1"
+        params = []
+
         if request.args.get("source_id"):
-            edges = [
-                e for e in edges if e["source_id"] == request.args.get("source_id")
-            ]
+            query += " AND e.source_id = ?"
+            params.append(request.args.get("source_id"))
+
         if request.args.get("target_id"):
-            edges = [
-                e for e in edges if e["target_id"] == request.args.get("target_id")
-            ]
+            query += " AND e.target_id = ?"
+            params.append(request.args.get("target_id"))
+
         if request.args.get("link_type"):
-            edges = [
-                e for e in edges if e["link_type"] == request.args.get("link_type")
-            ]
+            query += " AND e.link_type = ?"
+            params.append(request.args.get("link_type"))
+
         if request.args.get("node_type"):
-            # Need to look up which nodes match the node_type
-            cursor.execute(
-                "SELECT id FROM career_nodes WHERE node_type = ?",
-                (request.args.get("node_type"),),
+            query += (
+                " AND e.source_id IN (SELECT id FROM career_nodes WHERE node_type = ?)"
             )
-            valid_sources = {row["id"] for row in cursor.fetchall()}
-            edges = [e for e in edges if e["source_id"] in valid_sources]
+            params.append(request.args.get("node_type"))
 
-        conn.close()
-        return jsonify({"count": len(edges), "edges": edges, "calibrated": True})
+        query += " ORDER BY e.source_id, e.target_id"
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
 
-    query = "SELECT e.* FROM edges e WHERE 1=1"
-    params = []
-
-    if request.args.get("source_id"):
-        query += " AND e.source_id = ?"
-        params.append(request.args.get("source_id"))
-
-    if request.args.get("target_id"):
-        query += " AND e.target_id = ?"
-        params.append(request.args.get("target_id"))
-
-    if request.args.get("link_type"):
-        query += " AND e.link_type = ?"
-        params.append(request.args.get("link_type"))
-
-    if request.args.get("node_type"):
-        query += " AND e.source_id IN (SELECT id FROM career_nodes WHERE node_type = ?)"
-        params.append(request.args.get("node_type"))
-
-    query += " ORDER BY e.source_id, e.target_id"
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-
-    edges = [dict(row) for row in rows]
-
-    conn.close()
+        edges = [dict(row) for row in rows]
 
     return jsonify({"count": len(edges), "edges": edges})
 
@@ -349,9 +437,8 @@ def get_profile():
     """
     from profile_calibrator import get_profile as _get_profile
 
-    conn = get_db()
-    profile = _get_profile(conn)
-    conn.close()
+    with get_db() as conn:
+        profile = _get_profile(conn)
 
     return jsonify({"profile": profile})
 
@@ -383,18 +470,14 @@ def update_profile():
     if not data:
         return jsonify({"error": "Request body must be JSON"}), 400
 
-    conn = get_db()
-
     try:
-        # Load current profile, merge with updates
-        current = _get_profile(conn)
-        current.update(data)
-        saved = save_profile(current, conn)
+        with get_db() as conn:
+            # Load current profile, merge with updates
+            current = _get_profile(conn)
+            current.update(data)
+            saved = save_profile(current, conn)
     except ValueError as e:
-        conn.close()
         return jsonify({"error": str(e)}), 400
-
-    conn.close()
 
     return jsonify({"profile": saved, "message": "Profile updated"})
 
@@ -407,9 +490,8 @@ def get_calibration_summary():
     """
     from profile_calibrator import get_calibration_summary as _get_summary
 
-    conn = get_db()
-    summary = _get_summary(conn=conn)
-    conn.close()
+    with get_db() as conn:
+        summary = _get_summary(conn=conn)
 
     return jsonify(summary)
 
@@ -425,31 +507,34 @@ def search():
     if not query_text:
         return jsonify({"error": "Query parameter 'q' is required"}), 400
 
-    conn = get_db()
-    cursor = conn.cursor()
+    with get_db() as conn:
+        cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        SELECT
-            p.id, p.program_name, p.field, p.tuition_usd,
-            p.y1_salary_usd, p.y10_salary_usd, p.funding_tier,
-            u.name as university_name, u.country
-        FROM programs p
-        JOIN universities u ON p.university_id = u.id
-        WHERE
-            p.program_name LIKE ? OR
-            u.name LIKE ? OR
-            p.field LIKE ? OR
-            u.country LIKE ?
-        ORDER BY p.y10_salary_usd DESC
-    """,
-        (f"%{query_text}%", f"%{query_text}%", f"%{query_text}%", f"%{query_text}%"),
-    )
+        cursor.execute(
+            """
+            SELECT
+                p.id, p.program_name, p.field, p.tuition_usd,
+                p.y1_salary_usd, p.y10_salary_usd, p.funding_tier,
+                u.name as university_name, u.country
+            FROM programs p
+            JOIN universities u ON p.university_id = u.id
+            WHERE
+                p.program_name LIKE ? OR
+                u.name LIKE ? OR
+                p.field LIKE ? OR
+                u.country LIKE ?
+            ORDER BY p.y10_salary_usd DESC
+        """,
+            (
+                f"%{query_text}%",
+                f"%{query_text}%",
+                f"%{query_text}%",
+                f"%{query_text}%",
+            ),
+        )
 
-    rows = cursor.fetchall()
-    results = [dict(row) for row in rows]
-
-    conn.close()
+        rows = cursor.fetchall()
+        results = [dict(row) for row in rows]
 
     return jsonify({"query": query_text, "count": len(results), "results": results})
 
@@ -475,31 +560,22 @@ def get_networth():
     from networth_calculator import calculate_all_programs
 
     # Parse optional baseline overrides from query params
-    baseline_salary = None
-    baseline_growth = None
-    if request.args.get("baseline_salary"):
-        baseline_salary = float(request.args.get("baseline_salary"))
-    if request.args.get("baseline_growth"):
-        baseline_growth = float(request.args.get("baseline_growth"))
+    baseline_salary = _parse_float_param("baseline_salary")
+    if isinstance(baseline_salary, tuple):
+        return baseline_salary
+    baseline_growth = _parse_float_param("baseline_growth")
+    if isinstance(baseline_growth, tuple):
+        return baseline_growth
 
     # Parse lifestyle tier
-    lifestyle = request.args.get("lifestyle", "frugal")
-    if lifestyle not in ("frugal", "comfortable"):
-        return jsonify({"error": "lifestyle must be 'frugal' or 'comfortable'"}), 400
+    lifestyle = _parse_lifestyle()
+    if isinstance(lifestyle, tuple):
+        return lifestyle
 
     # Parse family transition year
-    family_transition_year = None
-    if request.args.get("family_year"):
-        try:
-            family_transition_year = int(request.args.get("family_year"))
-            if not (1 <= family_transition_year <= 13):
-                return jsonify(
-                    {"error": "family_year must be between 1 and 13 (13 = never)"}
-                ), 400
-        except (ValueError, TypeError):
-            return jsonify(
-                {"error": "family_year must be an integer between 1 and 13"}
-            ), 400
+    family_transition_year = _parse_family_year(max_year=13)
+    if isinstance(family_transition_year, tuple):
+        return family_transition_year
 
     data = calculate_all_programs(
         baseline_salary=baseline_salary,
@@ -534,8 +610,11 @@ def get_networth():
     programs.sort(key=lambda x: x.get(key, 0), reverse=(sort_key != "cost"))
 
     # Limit
-    if request.args.get("limit"):
-        programs = programs[: int(request.args.get("limit"))]
+    limit = _parse_int_param("limit")
+    if isinstance(limit, tuple):
+        return limit
+    if limit is not None:
+        programs = programs[:limit]
 
     # Compact mode — strip yearly breakdowns
     if request.args.get("compact", "").lower() == "true":
@@ -563,43 +642,33 @@ def get_program_networth(program_id):
     )
 
     # Parse lifestyle tier
-    lifestyle = request.args.get("lifestyle", "frugal")
-    if lifestyle not in ("frugal", "comfortable"):
-        return jsonify({"error": "lifestyle must be 'frugal' or 'comfortable'"}), 400
+    lifestyle = _parse_lifestyle()
+    if isinstance(lifestyle, tuple):
+        return lifestyle
 
     # Parse family transition year
-    family_transition_year = None
-    if request.args.get("family_year"):
-        try:
-            family_transition_year = int(request.args.get("family_year"))
-            if not (1 <= family_transition_year <= 13):
-                return jsonify(
-                    {"error": "family_year must be between 1 and 13 (13 = never)"}
-                ), 400
-        except (ValueError, TypeError):
-            return jsonify(
-                {"error": "family_year must be an integer between 1 and 13"}
-            ), 400
+    family_transition_year = _parse_family_year(max_year=13)
+    if isinstance(family_transition_year, tuple):
+        return family_transition_year
 
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT
-            p.id, p.program_name, p.field, p.tuition_usd,
-            p.y1_salary_usd, p.y5_salary_usd, p.y10_salary_usd,
-            p.net_10yr_usd, p.funding_tier, p.duration_years,
-            p.primary_market, p.notes,
-            u.name as university_name, u.country, u.region
-        FROM programs p
-        JOIN universities u ON p.university_id = u.id
-        WHERE p.id = ?
-    """,
-        (program_id,),
-    )
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                p.id, p.program_name, p.field, p.tuition_usd,
+                p.y1_salary_usd, p.y5_salary_usd, p.y10_salary_usd,
+                p.net_10yr_usd, p.funding_tier, p.duration_years,
+                p.primary_market, p.notes,
+                u.name as university_name, u.country, u.region
+            FROM programs p
+            JOIN universities u ON p.university_id = u.id
+            WHERE p.id = ?
+        """,
+            (program_id,),
+        )
 
-    row = cursor.fetchone()
-    conn.close()
+        row = cursor.fetchone()
 
     if not row:
         return jsonify({"error": "Program not found"}), 404
@@ -657,23 +726,14 @@ def get_career_networth():
     leaf_only = request.args.get("leaf_only", "true").lower() != "false"
 
     # Parse lifestyle tier
-    lifestyle = request.args.get("lifestyle", "frugal")
-    if lifestyle not in ("frugal", "comfortable"):
-        return jsonify({"error": "lifestyle must be 'frugal' or 'comfortable'"}), 400
+    lifestyle = _parse_lifestyle()
+    if isinstance(lifestyle, tuple):
+        return lifestyle
 
     # Parse family transition year
-    family_transition_year = None
-    if request.args.get("family_year"):
-        try:
-            family_transition_year = int(request.args.get("family_year"))
-            if not (1 <= family_transition_year <= 11):
-                return jsonify(
-                    {"error": "family_year must be between 1 and 11 (11 = never)"}
-                ), 400
-        except (ValueError, TypeError):
-            return jsonify(
-                {"error": "family_year must be an integer between 1 and 11"}
-            ), 400
+    family_transition_year = _parse_family_year(max_year=11)
+    if isinstance(family_transition_year, tuple):
+        return family_transition_year
 
     data = calculate_all_career_paths(
         node_type=node_type,
@@ -695,8 +755,11 @@ def get_career_networth():
     results.sort(key=lambda x: x.get(key, 0), reverse=True)
 
     # Limit
-    if request.args.get("limit"):
-        results = results[: int(request.args.get("limit"))]
+    limit = _parse_int_param("limit")
+    if isinstance(limit, tuple):
+        return limit
+    if limit is not None:
+        results = results[:limit]
 
     # Compact mode — strip yearly breakdowns
     if request.args.get("compact", "").lower() == "true":
@@ -725,29 +788,19 @@ def get_career_node_networth(node_id):
     )
 
     # Parse lifestyle tier
-    lifestyle = request.args.get("lifestyle", "frugal")
-    if lifestyle not in ("frugal", "comfortable"):
-        return jsonify({"error": "lifestyle must be 'frugal' or 'comfortable'"}), 400
+    lifestyle = _parse_lifestyle()
+    if isinstance(lifestyle, tuple):
+        return lifestyle
 
     # Parse family transition year
-    family_transition_year = None
-    if request.args.get("family_year"):
-        try:
-            family_transition_year = int(request.args.get("family_year"))
-            if not (1 <= family_transition_year <= 11):
-                return jsonify(
-                    {"error": "family_year must be between 1 and 11 (11 = never)"}
-                ), 400
-        except (ValueError, TypeError):
-            return jsonify(
-                {"error": "family_year must be an integer between 1 and 11"}
-            ), 400
+    family_transition_year = _parse_family_year(max_year=11)
+    if isinstance(family_transition_year, tuple):
+        return family_transition_year
 
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM career_nodes WHERE id = ?", (node_id,))
-    row = cursor.fetchone()
-    conn.close()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM career_nodes WHERE id = ?", (node_id,))
+        row = cursor.fetchone()
 
     if not row:
         return jsonify({"error": f"Career node '{node_id}' not found"}), 404

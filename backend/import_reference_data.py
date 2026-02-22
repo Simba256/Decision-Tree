@@ -10,9 +10,10 @@ Run once after creating the new tables:
 """
 
 import sqlite3
-from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "career_tree.db"
+from config import DB_PATH, get_logger
+
+logger = get_logger(__name__)
 
 
 def import_all():
@@ -35,7 +36,7 @@ def import_all():
 
     conn.commit()
     conn.close()
-    print("\nAll reference data imported successfully.")
+    logger.info("All reference data imported successfully.")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -83,7 +84,7 @@ def _import_exchange_rates(cursor):
             "INSERT INTO exchange_rates (currency, rate_per_usd, country_name) VALUES (?, ?, ?)",
             (currency, rate, country),
         )
-    print(f"  Imported {len(rates)} exchange rates")
+    logger.info("Imported %d exchange rates", len(rates))
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -744,7 +745,7 @@ def _import_tax_brackets(cursor):
     # ── Saudi Arabia (no income tax — special handling in config) ─────────
     # ── UAE (no income tax — special handling in config) ──────────────────
 
-    print(f"  Imported {count} tax brackets")
+    logger.info("Imported %d tax brackets", count)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1249,7 +1250,7 @@ def _import_tax_config(cursor):
         "Generic fallback effective tax rate",
     )
 
-    print(f"  Imported {count} tax config entries")
+    logger.info("Imported %d tax config entries", count)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1393,8 +1394,8 @@ def _import_living_costs(cursor):
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (city, student, single, family, c_student, c_single, c_family),
         )
-    print(
-        f"  Imported {len(city_costs)} city living costs (frugal + comfortable tiers)"
+    logger.info(
+        "Imported %d city living costs (frugal + comfortable tiers)", len(city_costs)
     )
 
 
@@ -1455,7 +1456,7 @@ def _import_country_default_cities(cursor):
             "INSERT INTO country_default_cities (country, default_city) VALUES (?, ?)",
             (country, city),
         )
-    print(f"  Imported {len(mappings)} country default city mappings")
+    logger.info("Imported %d country default city mappings", len(mappings))
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1653,7 +1654,7 @@ def _import_market_mappings(cursor):
             "INSERT INTO market_mappings (primary_market, work_country, work_city, us_state) VALUES (?, ?, ?, ?)",
             (market, country, city, state),
         )
-    print(f"  Imported {len(mappings)} market mappings")
+    logger.info("Imported %d market mappings", len(mappings))
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1696,7 +1697,7 @@ def _import_us_region_states(cursor):
             "INSERT INTO us_region_states (region_keyword, state_code, display_city) VALUES (?, ?, ?)",
             (keyword, state, city),
         )
-    print(f"  Imported {len(mappings)} US region-state mappings")
+    logger.info("Imported %d US region-state mappings", len(mappings))
 
 
 if __name__ == "__main__":

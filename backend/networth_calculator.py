@@ -30,9 +30,14 @@ All values in $K USD unless otherwise noted.
 """
 
 import sqlite3
-from pathlib import Path
 from typing import Optional
 
+from config import DB_PATH, get_db, BASELINE_ANNUAL_SALARY_USD_K, BASELINE_ANNUAL_GROWTH
+from calculator_common import (
+    interpolate_salary,
+    avg_summary,
+    calculate_pakistan_baseline,
+)
 from market_mapping import get_market_info, get_study_country_for_living_cost
 from tax_data import calculate_annual_tax
 from living_costs import (
@@ -41,15 +46,7 @@ from living_costs import (
     get_pakistan_living_cost,
 )
 
-DB_PATH = Path(__file__).parent / "career_tree.db"
-
 # ─── Configuration ───────────────────────────────────────────────────────────
-
-# Baseline: current salary (220K PKR/mo ≈ $9.5K/yr)
-BASELINE_ANNUAL_SALARY_USD_K = 9.5
-
-# Annual salary growth rate for no-masters baseline path
-BASELINE_ANNUAL_GROWTH = 0.08
 
 # Default program duration in years
 DEFAULT_DURATION = 2.0
@@ -63,23 +60,6 @@ TOTAL_YEARS = 12  # 2yr study + 10yr work experience
 
 
 # ─── Core Calculation Functions ──────────────────────────────────────────────
-
-
-def interpolate_salary(y1: float, y5: float, y10: float, work_year: int) -> float:
-    """
-    Linearly interpolate salary for a given work year (1-indexed, post-graduation).
-    Y1, Y5, Y10 are salary data points in $K USD for work experience years.
-    """
-    if work_year <= 1:
-        return y1
-    elif work_year <= 5:
-        t = (work_year - 1) / (5 - 1)
-        return y1 + t * (y5 - y1)
-    elif work_year <= 10:
-        t = (work_year - 5) / (10 - 5)
-        return y5 + t * (y10 - y5)
-    else:
-        return y10
 
 
 def calculate_baseline_networth(
@@ -100,53 +80,15 @@ def calculate_baseline_networth(
         family_transition_year: Calendar year when household transitions to family
             (1-12, or 13 for never). Default: FAMILY_TRANSITION_YEAR (5).
     """
-    if baseline_salary is None:
-        baseline_salary = BASELINE_ANNUAL_SALARY_USD_K
-    if baseline_growth is None:
-        baseline_growth = BASELINE_ANNUAL_GROWTH
-    if family_transition_year is None:
-        family_transition_year = FAMILY_TRANSITION_YEAR
-
-    yearly = []
-    total = 0.0
-    salary = baseline_salary
-
-    for cal_yr in range(1, TOTAL_YEARS + 1):
-        # Determine household type
-        if cal_yr < family_transition_year:
-            household = "single"
-        else:
-            household = "family"
-
-        # Pakistan taxes
-        after_tax = calculate_annual_tax(salary, "Pakistan")
-
-        # Pakistan living costs
-        living_cost = get_pakistan_living_cost(household, lifestyle=lifestyle)
-
-        # Annual savings
-        annual_savings = after_tax - living_cost
-
-        total += annual_savings
-        yearly.append(
-            {
-                "calendar_year": cal_yr,
-                "gross_salary_k": round(salary, 2),
-                "after_tax_k": round(after_tax, 2),
-                "living_cost_k": round(living_cost, 2),
-                "household": household,
-                "annual_savings_k": round(annual_savings, 2),
-                "cumulative_k": round(total, 2),
-            }
-        )
-
-        # Grow salary for next year
-        salary *= 1 + baseline_growth
-
-    return {
-        "total_networth_k": round(total, 2),
-        "yearly_breakdown": yearly,
-    }
+    return calculate_pakistan_baseline(
+        total_years=TOTAL_YEARS,
+        default_family_year=FAMILY_TRANSITION_YEAR,
+        year_key="calendar_year",
+        baseline_salary=baseline_salary,
+        baseline_growth=baseline_growth,
+        lifestyle=lifestyle,
+        family_transition_year=family_transition_year,
+    )
 
 
 def calculate_program_networth(
@@ -371,24 +313,22 @@ def calculate_all_programs(
     if family_transition_year is None:
         family_transition_year = FAMILY_TRANSITION_YEAR
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    with get_db() as conn:
+        cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT
-            p.id, p.program_name, p.field, p.tuition_usd,
-            p.y1_salary_usd, p.y5_salary_usd, p.y10_salary_usd,
-            p.net_10yr_usd, p.funding_tier, p.duration_years,
-            p.primary_market, p.notes,
-            u.name as university_name, u.country, u.region
-        FROM programs p
-        JOIN universities u ON p.university_id = u.id
-        ORDER BY p.net_10yr_usd DESC
-    """)
+        cursor.execute("""
+            SELECT
+                p.id, p.program_name, p.field, p.tuition_usd,
+                p.y1_salary_usd, p.y5_salary_usd, p.y10_salary_usd,
+                p.net_10yr_usd, p.funding_tier, p.duration_years,
+                p.primary_market, p.notes,
+                u.name as university_name, u.country, u.region
+            FROM programs p
+            JOIN universities u ON p.university_id = u.id
+            ORDER BY p.net_10yr_usd DESC
+        """)
 
-    programs = [dict(row) for row in cursor.fetchall()]
-    conn.close()
+        programs = [dict(row) for row in cursor.fetchall()]
 
     baseline = calculate_baseline_networth(
         baseline_salary,
@@ -422,19 +362,6 @@ def calculate_all_programs(
         tier_benefits[r["funding_tier"]].append(r["net_benefit_k"])
         field_benefits[r["field"]].append(r["net_benefit_k"])
         country_benefits[r["work_country"]].append(r["net_benefit_k"])
-
-    def _avg_summary(groups):
-        return {
-            k: {
-                "avg": round(sum(v) / len(v), 1),
-                "count": len(v),
-                "min": round(min(v), 1),
-                "max": round(max(v), 1),
-            }
-            for k, v in sorted(
-                groups.items(), key=lambda x: sum(x[1]) / len(x[1]), reverse=True
-            )
-        }
 
     positive = sum(1 for r in results if r["net_benefit_k"] > 0)
 
@@ -474,9 +401,9 @@ def calculate_all_programs(
                 }
                 for r in results[-5:]
             ],
-            "by_tier": _avg_summary(tier_benefits),
-            "by_field": _avg_summary(field_benefits),
-            "by_work_country": _avg_summary(country_benefits),
+            "by_tier": avg_summary(tier_benefits),
+            "by_field": avg_summary(field_benefits),
+            "by_work_country": avg_summary(country_benefits),
         },
     }
 

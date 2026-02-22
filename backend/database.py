@@ -3,9 +3,10 @@ Database setup and models for Career Decision Tree
 """
 
 import sqlite3
-from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "career_tree.db"
+from config import DB_PATH, get_logger
+
+logger = get_logger(__name__)
 
 
 def create_database():
@@ -245,7 +246,7 @@ def create_database():
     conn.commit()
     conn.close()
 
-    print(f"Database created at: {DB_PATH}")
+    logger.info("Database created at: %s", DB_PATH)
 
 
 if __name__ == "__main__":

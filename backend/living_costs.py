@@ -21,9 +21,9 @@ Main entry point:
 """
 
 import sqlite3
-from pathlib import Path
+from typing import Optional
 
-DB_PATH = Path(__file__).parent / "career_tree.db"
+from config import DB_PATH
 
 VALID_LIFESTYLES = ("frugal", "comfortable")
 VALID_HOUSEHOLDS = ("student", "single", "family")
@@ -103,7 +103,10 @@ UNIVERSITY_COUNTRY_COSTS: dict[str, dict[str, dict[str, float]]] = {
 
 
 def get_annual_living_cost(
-    city: str, household_type: str, country: str = None, lifestyle: str = "frugal"
+    city: str,
+    household_type: str,
+    country: Optional[str] = None,
+    lifestyle: str = "frugal",
 ) -> float:
     """
     Get annual living cost for a city and household type.
@@ -117,10 +120,10 @@ def get_annual_living_cost(
     Returns:
         Annual living cost in $K USD
     """
-    assert household_type in VALID_HOUSEHOLDS, (
-        f"Invalid household_type: {household_type}"
-    )
-    assert lifestyle in VALID_LIFESTYLES, f"Invalid lifestyle: {lifestyle}"
+    if household_type not in VALID_HOUSEHOLDS:
+        raise ValueError(f"Invalid household_type: {household_type}")
+    if lifestyle not in VALID_LIFESTYLES:
+        raise ValueError(f"Invalid lifestyle: {lifestyle}")
 
     # Direct city lookup
     if city in CITY_COSTS:
@@ -154,7 +157,8 @@ def get_study_living_cost(
     Returns:
         Annual living cost in $K USD
     """
-    assert lifestyle in VALID_LIFESTYLES, f"Invalid lifestyle: {lifestyle}"
+    if lifestyle not in VALID_LIFESTYLES:
+        raise ValueError(f"Invalid lifestyle: {lifestyle}")
 
     # Check university-specific costs first
     if university_country in UNIVERSITY_COUNTRY_COSTS:
@@ -170,7 +174,8 @@ def get_study_living_cost(
 
 def get_pakistan_living_cost(household_type: str, lifestyle: str = "frugal") -> float:
     """Get Pakistan baseline living cost."""
-    assert lifestyle in VALID_LIFESTYLES, f"Invalid lifestyle: {lifestyle}"
+    if lifestyle not in VALID_LIFESTYLES:
+        raise ValueError(f"Invalid lifestyle: {lifestyle}")
     return CITY_COSTS["Pakistan"][lifestyle][household_type]
 
 

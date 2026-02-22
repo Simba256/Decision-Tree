@@ -21,7 +21,6 @@ Loaded once at module import time and cached.
 
 import sqlite3
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional
 
 
@@ -36,7 +35,7 @@ class MarketInfo:
 
 # ─── Database Loading ────────────────────────────────────────────────────────
 
-DB_PATH = Path(__file__).parent / "career_tree.db"
+from config import DB_PATH
 
 
 def _load_us_region_states() -> dict[str, tuple[str, str]]:

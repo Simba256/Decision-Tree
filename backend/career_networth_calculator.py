@@ -24,22 +24,18 @@ All values in $K USD unless otherwise noted.
 """
 
 import sqlite3
-from pathlib import Path
 from typing import Optional
 
-from networth_calculator import interpolate_salary
+from config import DB_PATH, get_db, BASELINE_ANNUAL_SALARY_USD_K, BASELINE_ANNUAL_GROWTH
+from calculator_common import (
+    interpolate_salary,
+    avg_summary,
+    calculate_pakistan_baseline,
+)
 from tax_data import calculate_annual_tax
 from living_costs import get_pakistan_living_cost
 
-DB_PATH = Path(__file__).parent / "career_tree.db"
-
 # ─── Configuration ───────────────────────────────────────────────────────────
-
-# Baseline: current salary (220K PKR/mo ≈ $9.5K/yr)
-BASELINE_ANNUAL_SALARY_USD_K = 9.5
-
-# Annual salary growth rate for baseline path (staying in current role)
-BASELINE_ANNUAL_GROWTH = 0.08
 
 # Calendar year when household transitions from single to family
 # Year 3 for career paths (no 2-year study gap, so family transition earlier)
@@ -72,47 +68,15 @@ def calculate_career_baseline(
     Returns:
         Dict with total_networth_k and yearly_breakdown.
     """
-    if baseline_salary is None:
-        baseline_salary = BASELINE_ANNUAL_SALARY_USD_K
-    if baseline_growth is None:
-        baseline_growth = BASELINE_ANNUAL_GROWTH
-    if family_transition_year is None:
-        family_transition_year = FAMILY_TRANSITION_YEAR
-
-    yearly = []
-    total = 0.0
-    salary = baseline_salary
-
-    for yr in range(1, TOTAL_YEARS + 1):
-        household = "single" if yr < family_transition_year else "family"
-
-        # Pakistan taxes
-        after_tax = calculate_annual_tax(salary, "Pakistan")
-
-        # Pakistan living costs
-        living_cost = get_pakistan_living_cost(household, lifestyle=lifestyle)
-
-        annual_savings = after_tax - living_cost
-        total += annual_savings
-
-        yearly.append(
-            {
-                "year": yr,
-                "gross_salary_k": round(salary, 2),
-                "after_tax_k": round(after_tax, 2),
-                "living_cost_k": round(living_cost, 2),
-                "household": household,
-                "annual_savings_k": round(annual_savings, 2),
-                "cumulative_k": round(total, 2),
-            }
-        )
-
-        salary *= 1 + baseline_growth
-
-    return {
-        "total_networth_k": round(total, 2),
-        "yearly_breakdown": yearly,
-    }
+    return calculate_pakistan_baseline(
+        total_years=TOTAL_YEARS,
+        default_family_year=FAMILY_TRANSITION_YEAR,
+        year_key="year",
+        baseline_salary=baseline_salary,
+        baseline_growth=baseline_growth,
+        lifestyle=lifestyle,
+        family_transition_year=family_transition_year,
+    )
 
 
 def calculate_career_node_networth(
@@ -285,39 +249,38 @@ def calculate_all_career_paths(
     if family_transition_year is None:
         family_transition_year = FAMILY_TRANSITION_YEAR
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    with get_db() as conn:
+        cursor = conn.cursor()
 
-    # Get all career nodes (non-masters)
-    query = "SELECT * FROM career_nodes WHERE 1=1"
-    params = []
+        # Get all career nodes (non-masters)
+        query = "SELECT * FROM career_nodes WHERE 1=1"
+        params = []
 
-    if node_type:
-        query += " AND node_type = ?"
-        params.append(node_type)
+        if node_type:
+            query += " AND node_type = ?"
+            params.append(node_type)
 
-    query += " ORDER BY node_type, phase, id"
-    cursor.execute(query, params)
-    all_nodes = [dict(row) for row in cursor.fetchall()]
+        query += " ORDER BY node_type, phase, id"
+        cursor.execute(query, params)
+        all_nodes = [dict(row) for row in cursor.fetchall()]
 
-    # If leaf_only, find nodes that are NOT parents in any child edge
-    if leaf_only:
-        cursor.execute("SELECT DISTINCT source_id FROM edges WHERE link_type = 'child'")
-        parent_ids = {row["source_id"] for row in cursor.fetchall()}
-        nodes = [n for n in all_nodes if n["id"] not in parent_ids]
-    else:
-        nodes = all_nodes
+        # If leaf_only, find nodes that are NOT parents in any child edge
+        if leaf_only:
+            cursor.execute(
+                "SELECT DISTINCT source_id FROM edges WHERE link_type = 'child'"
+            )
+            parent_ids = {row["source_id"] for row in cursor.fetchall()}
+            nodes = [n for n in all_nodes if n["id"] not in parent_ids]
+        else:
+            nodes = all_nodes
 
-    # Load edge probabilities for probability-weighted expected value
-    cursor.execute(
-        "SELECT source_id, target_id, probability FROM edges WHERE link_type = 'child'"
-    )
-    edge_probs = {}
-    for row in cursor.fetchall():
-        edge_probs[(row["source_id"], row["target_id"])] = row["probability"]
-
-    conn.close()
+        # Load edge probabilities for probability-weighted expected value
+        cursor.execute(
+            "SELECT source_id, target_id, probability FROM edges WHERE link_type = 'child'"
+        )
+        edge_probs = {}
+        for row in cursor.fetchall():
+            edge_probs[(row["source_id"], row["target_id"])] = row["probability"]
 
     # Calculate baseline once
     baseline = calculate_career_baseline(
@@ -368,21 +331,6 @@ def calculate_all_career_paths(
         type_benefits[r["node_type"]].append(r["net_benefit_k"])
         phase_benefits[r.get("phase") or "unknown"].append(r["net_benefit_k"])
 
-    def _avg_summary(groups):
-        return {
-            k: {
-                "avg": round(sum(v) / len(v), 1) if v else 0,
-                "count": len(v),
-                "min": round(min(v), 1) if v else 0,
-                "max": round(max(v), 1) if v else 0,
-            }
-            for k, v in sorted(
-                groups.items(),
-                key=lambda x: sum(x[1]) / len(x[1]) if x[1] else 0,
-                reverse=True,
-            )
-        }
-
     positive = sum(1 for r in results if r["net_benefit_k"] > 0)
 
     return {
@@ -422,8 +370,8 @@ def calculate_all_career_paths(
                 }
                 for r in results[-5:]
             ],
-            "by_type": _avg_summary(type_benefits),
-            "by_phase": _avg_summary(phase_benefits),
+            "by_type": avg_summary(type_benefits),
+            "by_phase": avg_summary(phase_benefits),
         },
     }
 
