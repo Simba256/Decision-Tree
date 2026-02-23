@@ -45,15 +45,21 @@
       return data.edges;
     }
 
-    async function fetchNetworthCompact(lifestyle = 'frugal', familyYear = 5) {
-      const response = await fetch(`${API_BASE_URL}/networth?compact=true&lifestyle=${lifestyle}&family_year=${familyYear}`);
+    async function fetchNetworthCompact(lifestyle = 'frugal', familyYear = 5, aidScenario = 'no_aid') {
+      const response = await fetch(`${API_BASE_URL}/networth?compact=true&lifestyle=${lifestyle}&family_year=${familyYear}&aid_scenario=${aidScenario}`);
       if (!response.ok) throw new Error(`Networth API error: ${response.status}`);
       return await response.json();
     }
 
-    async function fetchProgramNetworth(programId, lifestyle = 'frugal', familyYear = 5) {
-      const response = await fetch(`${API_BASE_URL}/networth/${programId}?lifestyle=${lifestyle}&family_year=${familyYear}`);
+    async function fetchProgramNetworth(programId, lifestyle = 'frugal', familyYear = 5, aidScenario = 'no_aid') {
+      const response = await fetch(`${API_BASE_URL}/networth/${programId}?lifestyle=${lifestyle}&family_year=${familyYear}&aid_scenario=${aidScenario}`);
       if (!response.ok) throw new Error(`Networth API error: ${response.status}`);
+      return await response.json();
+    }
+
+    async function fetchProgramNetworthComparison(programId, lifestyle = 'frugal', familyYear = 5) {
+      const response = await fetch(`${API_BASE_URL}/networth/${programId}/compare?lifestyle=${lifestyle}&family_year=${familyYear}`);
+      if (!response.ok) throw new Error(`Networth Compare API error: ${response.status}`);
       return await response.json();
     }
 
@@ -76,7 +82,7 @@
     }
 
     // Tree Builder
-    function buildTree(programs, careerNodes, networthData, careerNetworthData, edgesData) {
+    function buildTree(programs, careerNodes, networthData, careerNetworthData, edgesData, maxInitialCapitalK = 150, sortBy = 'net_benefit') {
       const nodes = {};
 
       // ═══════════════════════════════════════════════════════════
@@ -129,6 +135,19 @@
       const getFieldColor = (field) => ({ 'AI/ML': '#00ff9f', 'CS/SWE': '#00e5ff', 'DS': '#a29bfe', 'Quant/FE': '#fdcb6e' }[field] || '#636e72');
       const getProb = (tier) => ({ tier1_free_europe: 0.55, tier2_elite_us: 0.10, tier3_midtier_global: 0.40, tier4_asia_regional: 0.45 }[tier] || 0.50);
 
+      // Color scale for initial capital: green (affordable) → yellow → orange → red (expensive)
+      const getInitialCapitalColor = (amountUsd) => {
+        if (!amountUsd || amountUsd <= 0) return '#636e72';
+        const k = amountUsd / 1000;
+        if (k <= 5) return '#00ff9f';      // Very affordable - bright green
+        if (k <= 10) return '#2ecc71';     // Affordable - green
+        if (k <= 20) return '#f1c40f';     // Moderate - yellow
+        if (k <= 35) return '#fdcb6e';     // Getting expensive - gold
+        if (k <= 50) return '#e67e22';     // Expensive - orange
+        if (k <= 80) return '#e74c3c';     // Very expensive - red
+        return '#c0392b';                   // Extremely expensive - dark red
+      };
+
       // Root node (stays in frontend — personal info)
       nodes.root = {
         id: "root",
@@ -144,7 +163,16 @@
       // MASTERS PATH — built dynamically from programs API data
       // ═══════════════════════════════════════════════════════════
 
-      const tierGroups = groupBy(programs, 'funding_tier');
+      // Filter programs by max initial capital (if filter active)
+      const maxCapitalUsd = maxInitialCapitalK * 1000;
+      const filteredPrograms = maxInitialCapitalK >= 150 ? programs : programs.filter(p => {
+        const nw = nwLookup[p.id];
+        const initialCapital = nw ? nw.initial_capital_usd : 0;
+        return initialCapital <= maxCapitalUsd;
+      });
+      const hiddenCount = programs.length - filteredPrograms.length;
+
+      const tierGroups = groupBy(filteredPrograms, 'funding_tier');
       const tierMeta = {
         tier1_free_europe: { label: "🎓 Free/Low\\nEurope", prob: 0.25, color: "#a29bfe", note: "Germany, Switzerland. High ROI, easier admission (40-70%).", phase: 1 },
         tier2_elite_us: { label: "🏆 Elite US\\nTop Tier", prob: 0.35, color: "#00e5ff", note: "MIT, Stanford, CMU. Hardest admission (5-15%).", phase: 1 },
@@ -152,21 +180,62 @@
         tier4_asia_regional: { label: "🏠 Asia &\\nRegional", prob: 0.10, color: "#00cec9", note: "India, Singapore, HK. Lower cost.", phase: 1 }
       };
 
+      // Universal sort value getter - returns a value where LOWER is better (for consistent sorting)
+      const getSortValue = (prog) => {
+        const nw = nwLookup[prog.id] || {};
+        switch (sortBy) {
+          case 'initial_capital':
+            return nw.initial_capital_usd || 999999; // lower is better
+          case 'net_worth':
+            return -(nw.masters_networth_k || 0); // negate so higher networth = lower value
+          case 'y1_salary':
+            return -(prog.y1_salary_usd || 0);
+          case 'y10_salary':
+            return -(prog.y10_salary_usd || 0);
+          case 'study_cost':
+            return nw.total_study_cost_k || 999999; // lower is better
+          case 'net_benefit':
+          default:
+            return -(nw.net_benefit_k || -999999); // negate so higher benefit = lower value
+        }
+      };
+
+      // Sort programs globally first, then build tree maintaining that order
+      const sortedPrograms = [...filteredPrograms].sort((a, b) => getSortValue(a) - getSortValue(b));
+
+      // Get best sort value for a group of programs (for sorting groups)
+      const getBestSortValue = (progs) => {
+        if (!progs || progs.length === 0) return 999999;
+        return Math.min(...progs.map(getSortValue));
+      };
+
+      // Sort tier IDs by best program in each tier
+      const sortedTierIds = Object.keys(tierMeta).filter(tid => tierGroups[tid] && tierGroups[tid].length > 0)
+        .sort((a, b) => getBestSortValue(tierGroups[a]) - getBestSortValue(tierGroups[b]));
+
       nodes.masters_root = {
         id: "masters_root",
         phase: 0,
         label: "🎓 Pursue\\nMasters Degree",
-        salary: `${programs.length} programs\\n38 countries`,
+        salary: maxInitialCapitalK < 150
+          ? `${filteredPrograms.length} programs\\n(${hiddenCount} hidden by budget)`
+          : `${programs.length} programs\\n38 countries`,
         prob: 0.15,
         color: "#a29bfe",
         note: baseline ? `Baseline (no masters): $${baseline.total_networth_k.toFixed(0)}K over 12yr. Data from database.` : "Data from database.",
-        children: Object.keys(tierMeta)
+        children: sortedTierIds  // Use sorted tier order
       };
 
       for (const [tierId, meta] of Object.entries(tierMeta)) {
         const tierProgs = tierGroups[tierId] || [];
+        if (tierProgs.length === 0) continue; // Skip empty tiers
+
         const fieldGroups = groupBy(tierProgs, 'field');
-        const fieldIds = Object.keys(fieldGroups).map(f => `${tierId}_field_${makeId(f)}`);
+
+        // Sort field IDs by best program in each field
+        const sortedFieldIds = Object.keys(fieldGroups)
+          .sort((a, b) => getBestSortValue(fieldGroups[a]) - getBestSortValue(fieldGroups[b]))
+          .map(f => `${tierId}_field_${makeId(f)}`);
 
         // Calculate tier average net benefit
         const tierNwValues = tierProgs.map(p => nwLookup[p.id]).filter(Boolean);
@@ -184,10 +253,13 @@
           prob: meta.prob,
           color: meta.color,
           note: meta.note,
-          children: fieldIds
+          children: sortedFieldIds  // Use sorted field order
         };
 
-        for (const [field, fieldProgs] of Object.entries(fieldGroups)) {
+        for (const [field, fieldProgsUnsorted] of Object.entries(fieldGroups)) {
+          // Sort programs within each field group using universal sort function
+          const fieldProgs = [...fieldProgsUnsorted].sort((a, b) => getSortValue(a) - getSortValue(b));
+
           const fieldId = `${tierId}_field_${makeId(field)}`;
           const progIds = fieldProgs.map(p => `prog_${p.id}`);
 
@@ -206,12 +278,16 @@
             const progId = `prog_${p.id}`;
             const nw = nwLookup[p.id];
             const benefitStr = nw ? `${nw.net_benefit_k >= 0 ? '+' : ''}$${nw.net_benefit_k.toFixed(0)}K benefit` : '';
+            const initialCapitalUsd = nw ? nw.initial_capital_usd : 0;
+            const initialCapitalColor = getInitialCapitalColor(initialCapitalUsd);
+            const initialCapitalStr = initialCapitalUsd ? `💰 $${(initialCapitalUsd/1000).toFixed(0)}K upfront` : '';
             const salary = [
               p.y1_salary_usd && `Y1: $${p.y1_salary_usd}K`,
               p.y10_salary_usd && `Y10: $${p.y10_salary_usd}K`,
-              benefitStr
+              benefitStr,
+              initialCapitalStr
             ].filter(Boolean).join('\\n') || 'N/A';
-            const note = `${p.university_name}, ${p.country}. ${p.tuition_usd ? `Tuition: $${p.tuition_usd}K. ` : ''}${nw ? `12yr Net Worth: $${nw.masters_networth_k.toFixed(0)}K. Net Benefit vs baseline: ${nw.net_benefit_k >= 0 ? '+' : ''}$${nw.net_benefit_k.toFixed(0)}K. Work: ${nw.work_country}${nw.work_city ? ' (' + nw.work_city + ')' : ''}. Eff. Tax: ${(nw.effective_tax_rate_y10 * 100).toFixed(0)}%.` : (p.net_10yr_usd ? `Net 10yr: $${p.net_10yr_usd}K.` : '')}`;
+            const note = `${p.university_name}, ${p.country}. ${p.tuition_usd ? `Tuition: $${p.tuition_usd}K. ` : ''}${nw ? `Initial Capital: $${(nw.initial_capital_usd/1000).toFixed(1)}K. 12yr Net Worth: $${nw.masters_networth_k.toFixed(0)}K. Net Benefit vs baseline: ${nw.net_benefit_k >= 0 ? '+' : ''}$${nw.net_benefit_k.toFixed(0)}K. Work: ${nw.work_country}${nw.work_city ? ' (' + nw.work_city + ')' : ''}. Eff. Tax: ${(nw.effective_tax_rate_y10 * 100).toFixed(0)}%.` : (p.net_10yr_usd ? `Net 10yr: $${p.net_10yr_usd}K.` : '')}`;
 
             nodes[progId] = {
               id: progId,
@@ -223,6 +299,7 @@
               note,
               networth: nw || null,
               programData: p,
+              initialCapitalColor,
               children: []
             };
           }
@@ -312,6 +389,9 @@
       const [collapsedNodes, setCollapsedNodes] = useState(new Set());
       const [lifestyle, setLifestyle] = useState('frugal');
       const [familyYear, setFamilyYear] = useState(5);
+      const [aidScenario, setAidScenario] = useState('expected'); // 'no_aid', 'expected', 'best_case'
+      const [maxInitialCapital, setMaxInitialCapital] = useState(150); // in $K, 150 = no filter
+      const [sortBy, setSortBy] = useState('net_benefit'); // Sort programs within groups
       const [loading, setLoading] = useState(true);
       const [error, setError] = useState(null);
 
@@ -322,11 +402,11 @@
             const [programs, careerNodes, networthData, careerNetworthData, edgesData] = await Promise.all([
               fetchPrograms(),
               fetchCareerNodes(),
-              fetchNetworthCompact(lifestyle, familyYear),
+              fetchNetworthCompact(lifestyle, familyYear, aidScenario),
               fetchCareerNetworth(lifestyle, familyYear),
               fetchEdges()
             ]);
-            const treeData = buildTree(programs, careerNodes, networthData, careerNetworthData, edgesData);
+            const treeData = buildTree(programs, careerNodes, networthData, careerNetworthData, edgesData, maxInitialCapital, sortBy);
             setNodes(treeData.nodes);
             setEdgeMap(treeData.edgeMap);
             setLoading(false);
@@ -336,7 +416,7 @@
           }
         }
         load();
-      }, [lifestyle, familyYear]);
+      }, [lifestyle, familyYear, aidScenario, maxInitialCapital, sortBy]);
 
       const isDescendantOf = useCallback((nodeId, ancestorId) => {
         if (!nodes) return false;
@@ -382,31 +462,121 @@
         setCollapsedNodes(new Set());
       }, []);
 
+      // Find the full path from root to a given node by tracing back through parent-child relationships
+      const findPathToNode = useCallback((targetId) => {
+        if (!nodes || !targetId || targetId === 'root') return [];
+
+        // Build a reverse lookup: childId -> parentId
+        const parentOf = {};
+        for (const [nodeId, node] of Object.entries(nodes)) {
+          for (const childId of (node.children || [])) {
+            parentOf[childId] = nodeId;
+          }
+        }
+
+        // Trace back from target to root
+        const path = [];
+        let current = targetId;
+        while (current && current !== 'root') {
+          path.unshift(current);
+          current = parentOf[current];
+        }
+
+        return path;
+      }, [nodes]);
+
       const handleNodeClick = useCallback((id) => {
         if (!nodes) return;
         if (id === "root") { setSelectedPath([]); setActiveLeaf(null); return; }
         const node = nodes[id];
-        const parentInPath = selectedPath.length === 0 || (nodes[selectedPath[selectedPath.length - 1]]?.children || []).includes(id);
-        if (parentInPath) {
-          const idx = selectedPath.indexOf(id);
-          if (idx !== -1) {
-            setSelectedPath(selectedPath.slice(0, idx + 1));
-            setActiveLeaf((node.children || []).length === 0 ? id : null);
-          } else {
-            setSelectedPath([...selectedPath, id]);
-            setActiveLeaf((node.children || []).length === 0 ? id : null);
-          }
-        } else {
-          setSelectedPath([id]);
-          setActiveLeaf((node.children || []).length === 0 ? id : null);
+        const isLeaf = (node.children || []).length === 0;
+
+        // Check if this node is already in the path
+        const idx = selectedPath.indexOf(id);
+        if (idx !== -1) {
+          // Clicking on a node already in path - truncate path to that node
+          setSelectedPath(selectedPath.slice(0, idx + 1));
+          setActiveLeaf(isLeaf ? id : null);
+          return;
         }
-      }, [nodes, selectedPath]);
+
+        // Check if this node is a direct child of the last node in path
+        const lastInPath = selectedPath[selectedPath.length - 1];
+        const isDirectChild = lastInPath && (nodes[lastInPath]?.children || []).includes(id);
+
+        if (isDirectChild) {
+          // Extend the current path
+          setSelectedPath([...selectedPath, id]);
+          setActiveLeaf(isLeaf ? id : null);
+        } else {
+          // Node is not in current path - find full path from root to this node
+          const fullPath = findPathToNode(id);
+          setSelectedPath(fullPath);
+          setActiveLeaf(isLeaf ? id : null);
+        }
+      }, [nodes, selectedPath, findPathToNode]);
 
       if (loading) return <div style={{minHeight:"100vh",background:"#070b14",color:"#e8eaf6",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"24px"}}>⏳ Loading...</div>;
       if (error) return <div style={{minHeight:"100vh",background:"#070b14",color:"#ef4444",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:"20px",padding:"40px"}}><div style={{fontSize:"32px"}}>❌ Error</div><div style={{maxWidth:"600px",textAlign:"center",background:"#1a0a0a",padding:"20px",borderRadius:"10px",border:"1px solid #ef4444"}}>{error}</div></div>;
       if (!nodes) return null;
 
-      const phaseNodes = [-1, 0, 1, 2, 3].map(ph => Object.values(nodes).filter(n => n.phase === ph && isNodeVisible(n.id)));
+      // Get nodes for each phase, with global sorting applied to phase 3 (programs)
+      // Also moves selected/highlighted nodes to the top of each column
+      const phaseNodes = [-1, 0, 1, 2, 3].map((ph, idx) => {
+        let phNodes = Object.values(nodes).filter(n => n.phase === ph && isNodeVisible(n.id));
+
+        // For phase 3 (programs column), apply global sorting across ALL programs
+        if (ph === 3 && phNodes.length > 0) {
+          phNodes = [...phNodes].sort((a, b) => {
+            const nwA = a.networth || {};
+            const nwB = b.networth || {};
+            const progA = a.programData || {};
+            const progB = b.programData || {};
+
+            switch (sortBy) {
+              case 'initial_capital':
+                return (nwA.initial_capital_usd || 999999) - (nwB.initial_capital_usd || 999999);
+              case 'net_worth':
+                return (nwB.masters_networth_k || 0) - (nwA.masters_networth_k || 0);
+              case 'y1_salary':
+                return (progB.y1_salary_usd || 0) - (progA.y1_salary_usd || 0);
+              case 'y10_salary':
+                return (progB.y10_salary_usd || 0) - (progA.y10_salary_usd || 0);
+              case 'study_cost':
+                return (nwA.total_study_cost_k || 999999) - (nwB.total_study_cost_k || 999999);
+              case 'net_benefit':
+              default:
+                return (nwB.net_benefit_k || -999999) - (nwA.net_benefit_k || -999999);
+            }
+          });
+        }
+
+        // Three-tier sorting priority:
+        // 1. In-path nodes (highlighted, part of selected path) - TOP
+        // 2. Normal nodes (highlighted, children/descendants of path) - MIDDLE
+        // 3. Greyed out nodes (not highlighted) - BOTTOM
+        if (selectedPath.length > 0 && phNodes.length > 1) {
+          const lastInPath = selectedPath[selectedPath.length - 1];
+
+          const inPath = [];
+          const normalDescendants = [];
+          const greyedOut = [];
+
+          for (const n of phNodes) {
+            if (selectedPath.includes(n.id)) {
+              inPath.push(n);
+            } else if (isDescendantOf(n.id, lastInPath)) {
+              normalDescendants.push(n);
+            } else {
+              greyedOut.push(n);
+            }
+          }
+
+          phNodes = [...inPath, ...normalDescendants, ...greyedOut];
+        }
+
+        return phNodes;
+      });
 
       // Helper: get edge probability for a parent→child transition
       // Falls back to node.prob if no edge data exists
@@ -478,7 +648,8 @@
             {isLeaf && !nw && <div style={{position:"absolute",top:-1,right:-1,background:"#1a2744",borderRadius:"0 8px 0 4px",padding:"1px 5px",fontSize:8,color:"#4a90d9"}}>END</div>}
             <div style={{fontSize:10.5,fontWeight:700,color:inPath?node.color:hovered?node.color+"cc":"#94a3b8",lineHeight:1.35,marginBottom:5,whiteSpace:"pre-line"}}>{node.label.replace(/\\n/g,"\n")}</div>
             <div style={{fontSize:9.5,color:"#64748b",lineHeight:1.3,whiteSpace:"pre-line"}}>{node.salary.replace(/\\n/g,"\n").split("\n").map((line, i) => {
-              if (line.includes("benefit")) return <span key={i} style={{color:benefitColor,fontWeight:700}}>{line}</span>;
+              if (line.includes("benefit")) return <span key={i} style={{color:benefitColor,fontWeight:700}}>{line}{"\n"}</span>;
+              if (line.includes("upfront")) return <span key={i} style={{color:node.initialCapitalColor||"#ff7675",fontWeight:600,fontSize:8.5}}>{line}{"\n"}</span>;
               return <span key={i}>{line}{i < node.salary.split("\\n").length - 1 ? "\n" : ""}</span>;
             })}</div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6}}>
@@ -496,22 +667,108 @@
         if (!nw || !prog) return <div style={{background:"#0c1220",border:"1px solid #1e2a3a",borderRadius:12,padding:"20px",marginTop:20}}><div style={{color:"#94a3b8",fontSize:13}}>Select a program node to see net worth details.</div></div>;
 
         const benefitColor = nw.net_benefit_k >= 200 ? "#00ff9f" : nw.net_benefit_k >= 0 ? "#fdcb6e" : "#ff7675";
+        const hasScholarship = nw.scholarship_applied_k > 0 || nw.coop_earnings_k > 0;
+        // Color scale for initial capital
+        const initialCapitalColor = node.initialCapitalColor || (() => {
+          const k = (nw.initial_capital_usd || 0) / 1000;
+          if (k <= 5) return '#00ff9f';
+          if (k <= 10) return '#2ecc71';
+          if (k <= 20) return '#f1c40f';
+          if (k <= 35) return '#fdcb6e';
+          if (k <= 50) return '#e67e22';
+          if (k <= 80) return '#e74c3c';
+          return '#c0392b';
+        })();
+        const aidTypeLabels = {
+          'guaranteed_funding': 'Guaranteed Full Funding',
+          'govt_scholarship': 'Government Scholarship',
+          'ta_ra': 'TA/RA Positions',
+          'ta_ra_merit': 'TA/RA + Merit',
+          'merit': 'Merit Scholarship',
+          'coop': 'Co-op Program',
+          'already_affordable': 'Already Affordable',
+          'needs_external': 'External Scholarship Needed',
+          'none': 'No Aid Available'
+        };
+        const aidTypeColors = {
+          'guaranteed_funding': '#00ff9f',
+          'govt_scholarship': '#00e5ff',
+          'ta_ra': '#fdcb6e',
+          'ta_ra_merit': '#fdcb6e',
+          'merit': '#a29bfe',
+          'coop': '#00e5ff',
+          'already_affordable': '#00ff9f',
+          'needs_external': '#ff7675',
+          'none': '#636e72'
+        };
 
         return (
           <div style={{background:"#0c1220",border:"1px solid #1e2a3a",borderRadius:12,padding:"20px 24px",marginTop:20}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:16}}>
               <div>
-                <div style={{fontSize:16,fontWeight:700,color:"#e8eaf6"}}>{prog.university_name}</div>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{fontSize:16,fontWeight:700,color:"#e8eaf6"}}>{prog.university_name}</div>
+                  {nw.aid_type && nw.aid_type !== 'none' && (
+                    <span style={{fontSize:9,background:`${aidTypeColors[nw.aid_type] || '#636e72'}22`,color:aidTypeColors[nw.aid_type] || '#636e72',padding:"2px 6px",borderRadius:4,fontWeight:600}}>
+                      {aidTypeLabels[nw.aid_type] || nw.aid_type}
+                    </span>
+                  )}
+                </div>
                 <div style={{fontSize:13,color:"#94a3b8",marginTop:2}}>{prog.program_name} · {prog.field} · {prog.country}</div>
+                <div style={{fontSize:10,color:"#64748b",marginTop:4}}>
+                  Scenario: <span style={{color:nw.aid_scenario==='no_aid'?'#ef4444':nw.aid_scenario==='expected'?'#fdcb6e':'#00ff9f',fontWeight:600}}>
+                    {nw.aid_scenario === 'no_aid' ? 'No Aid' : nw.aid_scenario === 'expected' ? 'Expected Aid' : 'Best Case Aid'}
+                  </span>
+                </div>
               </div>
               <div style={{textAlign:"right"}}>
                 <div style={{fontSize:24,fontWeight:700,color:benefitColor}}>{nw.net_benefit_k >= 0 ? "+" : ""}${nw.net_benefit_k.toFixed(0)}K</div>
                 <div style={{fontSize:10,color:"#64748b"}}>12yr net benefit vs baseline</div>
               </div>
             </div>
+
+            {/* Initial Capital Requirement Banner */}
+            {nw.initial_capital_usd > 0 && (
+              <div style={{background:`linear-gradient(90deg,${initialCapitalColor}15,#0c1220)`,border:`1px solid ${initialCapitalColor}44`,borderRadius:8,padding:"10px 14px",marginTop:12,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                <div style={{fontSize:10,color:initialCapitalColor}}>Initial Capital Required:</div>
+                <div style={{fontSize:14,color:initialCapitalColor,fontWeight:700}}>${(nw.initial_capital_usd/1000).toFixed(1)}K</div>
+                <div style={{fontSize:9,color:"#94a3b8",marginLeft:"auto"}}>
+                  {nw.initial_capital_base_usd && nw.initial_capital_base_usd !== nw.initial_capital_usd
+                    ? `Without aid: $${(nw.initial_capital_base_usd/1000).toFixed(1)}K`
+                    : "Blocked account + visa + tuition deposit + flights"}
+                </div>
+              </div>
+            )}
+
+            {/* Scholarship Impact Banner */}
+            {hasScholarship && (
+              <div style={{background:"linear-gradient(90deg,#1a2744,#0c1220)",border:"1px solid #2d4a66",borderRadius:8,padding:"10px 14px",marginTop:12,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                <div style={{fontSize:10,color:"#64748b"}}>Scholarship Impact:</div>
+                <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                  {nw.scholarship_applied_k > 0 && (
+                    <div>
+                      <span style={{fontSize:11,color:"#00ff9f",fontWeight:700}}>-${nw.scholarship_applied_k.toFixed(0)}K</span>
+                      <span style={{fontSize:9,color:"#64748b",marginLeft:4}}>tuition reduction</span>
+                    </div>
+                  )}
+                  {nw.coop_earnings_k > 0 && (
+                    <div>
+                      <span style={{fontSize:11,color:"#00e5ff",fontWeight:700}}>+${nw.coop_earnings_k.toFixed(0)}K</span>
+                      <span style={{fontSize:9,color:"#64748b",marginLeft:4}}>co-op earnings</span>
+                    </div>
+                  )}
+                </div>
+                <div style={{fontSize:9,color:"#94a3b8",marginLeft:"auto"}}>
+                  Raw Tuition: ${nw.raw_tuition_k}K → Effective: ${nw.tuition_k}K
+                </div>
+              </div>
+            )}
+
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))",gap:12,marginTop:16}}>
               {[
-                { label: "Tuition", value: `$${(prog.tuition_usd || 0).toFixed(0)}K`, color: "#ff7675" },
+                nw.initial_capital_usd > 0 ? { label: "Initial Capital", value: `$${(nw.initial_capital_usd/1000).toFixed(1)}K`, color: initialCapitalColor } : null,
+                { label: "Raw Tuition", value: `$${nw.raw_tuition_k.toFixed(0)}K`, color: hasScholarship ? "#64748b" : "#ff7675" },
+                hasScholarship ? { label: "After Aid", value: `$${nw.tuition_k.toFixed(0)}K`, color: "#00ff9f" } : null,
                 { label: "Total Study Cost", value: `$${nw.total_study_cost_k.toFixed(0)}K`, color: "#ff7675" },
                 { label: "Y1 Salary", value: `$${nw.y1_salary_k.toFixed(0)}K`, color: "#00e5ff" },
                 { label: "Y10 Salary", value: `$${nw.y10_salary_k.toFixed(0)}K`, color: "#00e5ff" },
@@ -519,13 +776,36 @@
                 { label: "Baseline NW", value: `$${nw.baseline_networth_k.toFixed(0)}K`, color: "#64748b" },
                 { label: "Work Location", value: `${nw.work_country}${nw.work_city ? ' (' + nw.work_city + ')' : ''}`, color: "#94a3b8" },
                 { label: "Eff. Tax (Y10)", value: `${(nw.effective_tax_rate_y10 * 100).toFixed(1)}%`, color: "#fdcb6e" },
-              ].map((item, i) => (
+              ].filter(Boolean).map((item, i) => (
                 <div key={i} style={{background:"#131c2e",borderRadius:8,padding:"8px 10px"}}>
                   <div style={{fontSize:9,color:"#64748b",letterSpacing:"0.05em",marginBottom:3}}>{item.label}</div>
                   <div style={{fontSize:13,fontWeight:600,color:item.color}}>{item.value}</div>
                 </div>
               ))}
             </div>
+
+            {/* Aid Details Section */}
+            {nw.expected_aid_k > 0 || nw.best_case_aid_k > 0 ? (
+              <div style={{marginTop:12,padding:"10px 14px",background:"#131c2e",borderRadius:8}}>
+                <div style={{fontSize:10,color:"#64748b",marginBottom:6}}>Available Financial Aid</div>
+                <div style={{display:"flex",gap:16,flexWrap:"wrap",fontSize:11}}>
+                  <div>
+                    <span style={{color:"#fdcb6e"}}>Expected: </span>
+                    <span style={{color:"#e8eaf6",fontWeight:600}}>${nw.expected_aid_k}K</span>
+                  </div>
+                  <div>
+                    <span style={{color:"#00ff9f"}}>Best Case: </span>
+                    <span style={{color:"#e8eaf6",fontWeight:600}}>${nw.best_case_aid_k}K</span>
+                  </div>
+                  {nw.coop_earnings_k > 0 && (
+                    <div>
+                      <span style={{color:"#00e5ff"}}>Co-op Earnings: </span>
+                      <span style={{color:"#e8eaf6",fontWeight:600}}>${nw.coop_earnings_k}K</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
           </div>
         );
       };
@@ -597,6 +877,27 @@
               </div>
               <span style={{fontSize:11,color:lifestyle==='comfortable'?"#a29bfe":"#4a5568",fontWeight:lifestyle==='comfortable'?700:400,cursor:"pointer",transition:"all 0.15s"}} onClick={()=>setLifestyle('comfortable')}>Comfortable</span>
             </div>
+            <div style={{display:"flex",gap:4,justifyContent:"center",alignItems:"center",marginTop:10}}>
+              <span style={{fontSize:10,color:"#64748b",marginRight:4}}>Scholarship:</span>
+              {[
+                {id:'no_aid', label:'No Aid', color:'#ef4444', desc:'Full tuition'},
+                {id:'expected', label:'Expected', color:'#fdcb6e', desc:'Realistic aid'},
+                {id:'best_case', label:'Best Case', color:'#00ff9f', desc:'Full scholarship'}
+              ].map(opt => (
+                <button key={opt.id} onClick={()=>setAidScenario(opt.id)} title={opt.desc} style={{
+                  background:aidScenario===opt.id?opt.color+'22':'#0c1220',
+                  border:`1px solid ${aidScenario===opt.id?opt.color:'#2d4a66'}`,
+                  borderRadius:6,
+                  padding:'3px 8px',
+                  fontSize:10,
+                  color:aidScenario===opt.id?opt.color:'#64748b',
+                  cursor:'pointer',
+                  fontFamily:'inherit',
+                  fontWeight:aidScenario===opt.id?700:400,
+                  transition:'all 0.15s'
+                }}>{opt.label}</button>
+              ))}
+            </div>
             <div style={{display:"flex",flexDirection:"column",alignItems:"center",marginTop:10,gap:4}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <span style={{fontSize:11,color:"#64748b"}}>Family Year</span>
@@ -611,7 +912,45 @@
                  `Year ${familyYear} — Family at year ${familyYear}`}
               </div>
             </div>
-            <div style={{fontSize:10,color:"#00ff9f",marginTop:8}}>✓ Connected to API · Edge Probabilities · {lifestyle === 'frugal' ? 'Frugal' : 'Comfortable'} · Family {familyYear <= 12 ? `at Yr ${familyYear}` : 'Never'}</div>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",marginTop:10,gap:4}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:11,color:"#64748b"}}>Max Initial Capital</span>
+                <input type="range" min={5} max={150} step={5} value={maxInitialCapital} onChange={e=>setMaxInitialCapital(Number(e.target.value))} style={{width:160,accentColor:"#ff7675",cursor:"pointer"}}/>
+                <span style={{fontSize:12,fontWeight:700,color:"#ff7675",minWidth:40,textAlign:"center"}}>{maxInitialCapital >= 150 ? "All" : `$${maxInitialCapital}K`}</span>
+              </div>
+              <div style={{fontSize:10,color:"#94a3b8"}}>
+                {maxInitialCapital >= 150 ? "Showing all programs — no budget filter" :
+                 maxInitialCapital <= 10 ? `Only programs you can afford with $${maxInitialCapital}K savings` :
+                 maxInitialCapital <= 25 ? `Affordable with $${maxInitialCapital}K — includes most Asia/Europe` :
+                 maxInitialCapital <= 50 ? `Up to $${maxInitialCapital}K — includes mid-tier US/UK` :
+                 `Up to $${maxInitialCapital}K — includes most programs`}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:4,justifyContent:"center",alignItems:"center",marginTop:10,flexWrap:"wrap"}}>
+              <span style={{fontSize:10,color:"#64748b",marginRight:4}}>Sort by:</span>
+              {[
+                {id:'net_benefit', label:'Net Benefit', color:'#00ff9f', desc:'Highest ROI first'},
+                {id:'initial_capital', label:'Initial $', color:'#ff7675', desc:'Cheapest upfront first'},
+                {id:'study_cost', label:'Study Cost', color:'#fd79a8', desc:'Lowest total cost first'},
+                {id:'net_worth', label:'Net Worth', color:'#a29bfe', desc:'Highest wealth first'},
+                {id:'y1_salary', label:'Y1 Salary', color:'#00e5ff', desc:'Best starting salary'},
+                {id:'y10_salary', label:'Y10 Salary', color:'#fdcb6e', desc:'Best long-term salary'}
+              ].map(opt => (
+                <button key={opt.id} onClick={()=>setSortBy(opt.id)} title={opt.desc} style={{
+                  background:sortBy===opt.id?opt.color+'22':'#0c1220',
+                  border:`1px solid ${sortBy===opt.id?opt.color:'#2d4a66'}`,
+                  borderRadius:6,
+                  padding:'3px 6px',
+                  fontSize:9,
+                  color:sortBy===opt.id?opt.color:'#64748b',
+                  cursor:'pointer',
+                  fontFamily:'inherit',
+                  fontWeight:sortBy===opt.id?700:400,
+                  transition:'all 0.15s'
+                }}>{opt.label}</button>
+              ))}
+            </div>
+            <div style={{fontSize:10,color:"#00ff9f",marginTop:8}}>✓ Connected to API · {lifestyle === 'frugal' ? 'Frugal' : 'Comfortable'} · Family {familyYear <= 12 ? `Yr ${familyYear}` : '∞'} · Aid: {aidScenario === 'no_aid' ? 'None' : aidScenario === 'expected' ? 'Expected' : 'Best Case'}{maxInitialCapital < 150 ? ` · Budget: $${maxInitialCapital}K` : ''}</div>
           </div>
 
           <div style={{display:"flex",gap:0,alignItems:"flex-start",overflowX:"auto",paddingBottom:24,minWidth:"900px"}}>

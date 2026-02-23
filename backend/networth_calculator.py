@@ -98,6 +98,7 @@ def calculate_program_networth(
     baseline_growth: Optional[float] = None,
     lifestyle: str = "frugal",
     family_transition_year: Optional[int] = None,
+    aid_scenario: str = "no_aid",
 ) -> dict:
     """
     Calculate 12-year net worth for a specific masters program.
@@ -116,17 +117,57 @@ def calculate_program_networth(
         lifestyle: "frugal" or "comfortable" living cost tier.
         family_transition_year: Calendar year when household transitions to family
             (1-12, or 13 for never). Default: FAMILY_TRANSITION_YEAR (5).
+        aid_scenario: Financial aid scenario to apply:
+            - "no_aid": Full sticker price tuition (conservative/current behavior)
+            - "expected": Apply expected_aid_usd reduction (realistic estimate)
+            - "best_case": Apply best_case_aid_usd reduction (optimistic but achievable)
     """
     if family_transition_year is None:
         family_transition_year = FAMILY_TRANSITION_YEAR
+
     # Extract program data
-    tuition = program.get("tuition_usd") or 0  # Total tuition in $K
+    raw_tuition = program.get("tuition_usd") or 0  # Total tuition in $K
     y1_salary = program.get("y1_salary_usd") or 0  # $K
     y5_salary = program.get("y5_salary_usd") or 0  # $K
     y10_salary = program.get("y10_salary_usd") or 0  # $K
     duration = program.get("duration_years") or DEFAULT_DURATION
     primary_market = program.get("primary_market") or ""
     uni_country = program.get("country") or "USA"
+
+    # Apply financial aid based on scenario
+    expected_aid = program.get("expected_aid_usd") or 0
+    best_case_aid = program.get("best_case_aid_usd") or 0
+    coop_earnings = program.get("coop_earnings_usd") or 0
+    aid_type = program.get("aid_type") or "none"
+    initial_capital_base = program.get("initial_capital_usd") or 0
+
+    if aid_scenario == "expected":
+        tuition = max(0, raw_tuition - expected_aid)
+        scholarship_applied = expected_aid
+    elif aid_scenario == "best_case":
+        tuition = max(0, raw_tuition - best_case_aid)
+        scholarship_applied = best_case_aid
+    else:  # "no_aid" - default
+        tuition = raw_tuition
+        scholarship_applied = 0
+
+    # Calculate adjusted initial capital based on aid scenario
+    # Initial capital includes blocked account + first semester tuition + visa/flights
+    # When scholarships cover tuition, the tuition portion of initial capital is reduced
+    if aid_scenario == "no_aid":
+        initial_capital = initial_capital_base
+    elif aid_type == "guaranteed_funding":
+        # Guaranteed funding (KAIST, MEXT, KAUST): minimal initial capital
+        # Just need flights, visa, first month settling - typically $2-3K
+        initial_capital = min(initial_capital_base, 3000)
+    else:
+        # Partial funding: reduce tuition component proportionally
+        # Estimate tuition is ~40-50% of initial capital for most programs
+        tuition_reduction_pct = min(1.0, scholarship_applied / max(raw_tuition, 1))
+        # Assume tuition component is ~50% of initial capital (rest is living proof, visa, etc.)
+        tuition_component = initial_capital_base * 0.5
+        non_tuition_component = initial_capital_base * 0.5
+        initial_capital = int(non_tuition_component + tuition_component * (1 - tuition_reduction_pct))
 
     # Get work location info
     market = get_market_info(primary_market, uni_country)
@@ -206,6 +247,10 @@ def calculate_program_networth(
         )
 
     # ── Net worth calculation ────────────────────────────────────────────
+    # Add co-op earnings for co-op programs (reduces effective cost)
+    if aid_scenario in ("expected", "best_case") and coop_earnings > 0:
+        total_study_cost -= coop_earnings
+
     masters_networth = total_work_savings - total_study_cost
 
     # Cumulative tracking
@@ -266,10 +311,21 @@ def calculate_program_networth(
         "work_city": work_city,
         "us_state": us_state,
         "primary_market": primary_market,
-        # Costs
+        # Initial capital requirement (upfront funds needed before starting)
+        "initial_capital_base_usd": initial_capital_base,  # No aid scenario
+        "initial_capital_usd": initial_capital,  # Adjusted for aid scenario
+        # Costs (raw vs effective)
+        "raw_tuition_k": raw_tuition,
         "tuition_k": tuition,
-        "study_living_cost_k": round(total_study_cost - tuition, 2),
+        "study_living_cost_k": round(total_study_cost - tuition + (coop_earnings if aid_scenario in ("expected", "best_case") else 0), 2),
         "total_study_cost_k": round(total_study_cost, 2),
+        # Financial Aid Info
+        "aid_scenario": aid_scenario,
+        "scholarship_applied_k": scholarship_applied,
+        "coop_earnings_k": coop_earnings if aid_scenario in ("expected", "best_case") else 0,
+        "aid_type": aid_type,
+        "expected_aid_k": expected_aid,
+        "best_case_aid_k": best_case_aid,
         # Earnings
         "total_work_savings_k": round(total_work_savings, 2),
         "masters_networth_k": round(masters_networth, 2),
@@ -295,6 +351,7 @@ def calculate_all_programs(
     baseline_growth: Optional[float] = None,
     lifestyle: str = "frugal",
     family_transition_year: Optional[int] = None,
+    aid_scenario: str = "no_aid",
 ):
     """
     Calculate net worth for all programs in the database.
@@ -305,6 +362,10 @@ def calculate_all_programs(
         lifestyle: "frugal" or "comfortable" living cost tier.
         family_transition_year: Calendar year when household transitions to family
             (1-12, or 13 for never). Default: FAMILY_TRANSITION_YEAR (5).
+        aid_scenario: Financial aid scenario:
+            - "no_aid": Full sticker price (default)
+            - "expected": Apply expected_aid_usd reduction
+            - "best_case": Apply best_case_aid_usd reduction
     """
     if baseline_salary is None:
         baseline_salary = BASELINE_ANNUAL_SALARY_USD_K
@@ -322,6 +383,10 @@ def calculate_all_programs(
                 p.y1_salary_usd, p.y5_salary_usd, p.y10_salary_usd,
                 p.net_10yr_usd, p.funding_tier, p.duration_years,
                 p.primary_market, p.notes,
+                p.expected_aid_pct, p.expected_aid_usd,
+                p.best_case_aid_pct, p.best_case_aid_usd,
+                p.aid_type, p.coop_earnings_usd,
+                p.initial_capital_usd,
                 u.name as university_name, u.country, u.region
             FROM programs p
             JOIN universities u ON p.university_id = u.id
@@ -345,6 +410,7 @@ def calculate_all_programs(
             baseline_total,
             lifestyle=lifestyle,
             family_transition_year=family_transition_year,
+            aid_scenario=aid_scenario,
         )
         results.append(result)
 
@@ -376,6 +442,7 @@ def calculate_all_programs(
             "tax_model": "progressive_brackets_per_country",
             "living_cost_model": "per_city_single_family_student",
             "lifestyle": lifestyle,
+            "aid_scenario": aid_scenario,
         },
         "programs": results,
         "summary": {

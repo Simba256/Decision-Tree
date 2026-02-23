@@ -48,6 +48,16 @@ def create_database():
             key_employers TEXT,
             notes TEXT,
             data_confidence TEXT,
+            expected_aid_pct REAL DEFAULT 0,
+            expected_aid_usd INTEGER DEFAULT 0,
+            best_case_aid_pct REAL DEFAULT 0,
+            best_case_aid_usd INTEGER DEFAULT 0,
+            aid_type TEXT DEFAULT 'none',
+            coop_earnings_usd INTEGER DEFAULT 0,
+            gre_quant_target INTEGER,
+            gre_verbal_target INTEGER,
+            gre_required TEXT DEFAULT 'not_required',
+            initial_capital_usd INTEGER DEFAULT 0,
             FOREIGN KEY (university_id) REFERENCES universities(id)
         )
     """)
@@ -102,6 +112,70 @@ def create_database():
             link_type TEXT NOT NULL DEFAULT 'child',
             note TEXT,
             UNIQUE(source_id, target_id, link_type)
+        )
+    """)
+
+    # ─── Financial Aid Tables ───────────────────────────────────────────────
+
+    # Scholarships catalog: all known scholarships, grants, fellowships
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS scholarships (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            country TEXT,
+            coverage_type TEXT NOT NULL,
+            amount_usd INTEGER,
+            amount_description TEXT,
+            eligibility_nationality TEXT,
+            eligibility_min_gpa REAL,
+            eligibility_min_work_years REAL,
+            eligibility_gre_required TEXT DEFAULT 'not_required',
+            eligibility_ielts_min REAL,
+            eligibility_notes TEXT,
+            competitiveness TEXT,
+            annual_awards INTEGER,
+            deadline_description TEXT,
+            application_url TEXT,
+            return_bond_years INTEGER DEFAULT 0,
+            relevance_score INTEGER,
+            notes TEXT
+        )
+    """)
+
+    # Program-level aid profiles: per-program financial aid estimates
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS program_aid_profiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            program_id INTEGER NOT NULL,
+            expected_aid_pct REAL DEFAULT 0,
+            expected_aid_usd INTEGER DEFAULT 0,
+            best_case_aid_pct REAL DEFAULT 0,
+            best_case_aid_usd INTEGER DEFAULT 0,
+            aid_type TEXT DEFAULT 'none',
+            coop_earnings_usd INTEGER DEFAULT 0,
+            ta_ra_probability REAL DEFAULT 0,
+            ta_ra_annual_stipend_usd INTEGER,
+            gre_quant_target INTEGER,
+            gre_verbal_target INTEGER,
+            gre_required TEXT DEFAULT 'not_required',
+            funding_notes TEXT,
+            FOREIGN KEY (program_id) REFERENCES programs(id),
+            UNIQUE(program_id)
+        )
+    """)
+
+    # Many-to-many: which scholarships apply to which programs/universities
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS scholarship_program_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scholarship_id INTEGER NOT NULL,
+            program_id INTEGER,
+            university_id INTEGER,
+            applicability_notes TEXT,
+            FOREIGN KEY (scholarship_id) REFERENCES scholarships(id),
+            FOREIGN KEY (program_id) REFERENCES programs(id),
+            FOREIGN KEY (university_id) REFERENCES universities(id)
         )
     """)
 
@@ -242,6 +316,21 @@ def create_database():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_edges_link_type ON edges(link_type)")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_program_aid_profiles_program ON program_aid_profiles(program_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_scholarship_links_scholarship ON scholarship_program_links(scholarship_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_scholarship_links_program ON scholarship_program_links(program_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_scholarships_country ON scholarships(country)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_scholarships_relevance ON scholarships(relevance_score)"
+    )
 
     conn.commit()
     conn.close()

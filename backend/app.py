@@ -539,6 +539,17 @@ def search():
     return jsonify({"query": query_text, "count": len(results), "results": results})
 
 
+def _parse_aid_scenario():
+    """
+    Parse and validate the 'aid_scenario' query parameter.
+    Returns the validated string, or a (jsonify(...), 400) error tuple.
+    """
+    scenario = request.args.get("aid_scenario", "no_aid")
+    if scenario not in ("no_aid", "expected", "best_case"):
+        return jsonify({"error": "aid_scenario must be 'no_aid', 'expected', or 'best_case'"}), 400
+    return scenario
+
+
 @app.route("/api/networth", methods=["GET"])
 def get_networth():
     """
@@ -550,10 +561,12 @@ def get_networth():
       - baseline_growth: Annual salary growth rate (default: 0.08)
       - lifestyle: Living cost tier — "frugal" or "comfortable" (default: frugal)
       - family_year: Calendar year for single→family transition, 1-13 (default: 5, 13=never)
-      - sort_by: Sort field — net_benefit, cost, y1, y10, networth (default: net_benefit)
+      - aid_scenario: Financial aid scenario — "no_aid", "expected", or "best_case" (default: no_aid)
+      - sort_by: Sort field — net_benefit, cost, y1, y10, networth, initial_capital (default: net_benefit)
       - field: Filter by field (AI/ML, CS/SWE, etc.)
       - funding_tier: Filter by tier
       - work_country: Filter by work country
+      - max_initial_capital: Max initial capital requirement in USD (filters programs you can afford)
       - limit: Max results (default: all)
       - compact: If "true", omit yearly breakdowns (default: false)
     """
@@ -577,11 +590,17 @@ def get_networth():
     if isinstance(family_transition_year, tuple):
         return family_transition_year
 
+    # Parse aid scenario
+    aid_scenario = _parse_aid_scenario()
+    if isinstance(aid_scenario, tuple):
+        return aid_scenario
+
     data = calculate_all_programs(
         baseline_salary=baseline_salary,
         baseline_growth=baseline_growth,
         lifestyle=lifestyle,
         family_transition_year=family_transition_year,
+        aid_scenario=aid_scenario,
     )
 
     # Filter
@@ -597,6 +616,15 @@ def get_networth():
             p for p in programs if p["work_country"] == request.args.get("work_country")
         ]
 
+    # Filter by max initial capital (affordability filter)
+    max_capital = _parse_int_param("max_initial_capital")
+    if isinstance(max_capital, tuple):
+        return max_capital
+    if max_capital is not None:
+        programs = [
+            p for p in programs if p.get("initial_capital_usd", 0) <= max_capital
+        ]
+
     # Sort
     sort_key = request.args.get("sort_by", "net_benefit")
     sort_map = {
@@ -605,9 +633,12 @@ def get_networth():
         "y1": "y1_salary_k",
         "y10": "y10_salary_k",
         "networth": "masters_networth_k",
+        "initial_capital": "initial_capital_usd",
     }
     key = sort_map.get(sort_key, "net_benefit_k")
-    programs.sort(key=lambda x: x.get(key, 0), reverse=(sort_key != "cost"))
+    # For initial_capital, lower is better; for cost, lower is also better
+    reverse = sort_key not in ("cost", "initial_capital")
+    programs.sort(key=lambda x: x.get(key, 0), reverse=reverse)
 
     # Limit
     limit = _parse_int_param("limit")
@@ -631,6 +662,80 @@ def get_networth():
 def get_program_networth(program_id):
     """
     Calculate 12-year net worth for a specific program by ID (V2).
+
+    Query params (all optional):
+      - lifestyle: Living cost tier — "frugal" or "comfortable" (default: frugal)
+      - family_year: Calendar year for single→family transition, 1-13 (default: 5, 13=never)
+      - aid_scenario: Financial aid scenario — "no_aid", "expected", or "best_case" (default: no_aid)
+    """
+    from networth_calculator import (
+        calculate_program_networth,
+        calculate_baseline_networth,
+    )
+
+    # Parse lifestyle tier
+    lifestyle = _parse_lifestyle()
+    if isinstance(lifestyle, tuple):
+        return lifestyle
+
+    # Parse family transition year
+    family_transition_year = _parse_family_year(max_year=13)
+    if isinstance(family_transition_year, tuple):
+        return family_transition_year
+
+    # Parse aid scenario
+    aid_scenario = _parse_aid_scenario()
+    if isinstance(aid_scenario, tuple):
+        return aid_scenario
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                p.id, p.program_name, p.field, p.tuition_usd,
+                p.y1_salary_usd, p.y5_salary_usd, p.y10_salary_usd,
+                p.net_10yr_usd, p.funding_tier, p.duration_years,
+                p.primary_market, p.notes,
+                p.expected_aid_pct, p.expected_aid_usd,
+                p.best_case_aid_pct, p.best_case_aid_usd,
+                p.aid_type, p.coop_earnings_usd,
+                p.initial_capital_usd,
+                u.name as university_name, u.country, u.region
+            FROM programs p
+            JOIN universities u ON p.university_id = u.id
+            WHERE p.id = ?
+        """,
+            (program_id,),
+        )
+
+        row = cursor.fetchone()
+
+    if not row:
+        return jsonify({"error": "Program not found"}), 404
+
+    program = dict(row)
+    baseline = calculate_baseline_networth(
+        lifestyle=lifestyle,
+        family_transition_year=family_transition_year,
+    )
+    result = calculate_program_networth(
+        program,
+        baseline["total_networth_k"],
+        lifestyle=lifestyle,
+        family_transition_year=family_transition_year,
+        aid_scenario=aid_scenario,
+    )
+    result["baseline"] = baseline
+
+    return jsonify(result)
+
+
+@app.route("/api/networth/<int:program_id>/compare", methods=["GET"])
+def get_program_networth_comparison(program_id):
+    """
+    Calculate 12-year net worth for a specific program with ALL THREE aid scenarios.
+    Returns no_aid, expected, and best_case scenarios for comparison.
 
     Query params (all optional):
       - lifestyle: Living cost tier — "frugal" or "comfortable" (default: frugal)
@@ -660,6 +765,10 @@ def get_program_networth(program_id):
                 p.y1_salary_usd, p.y5_salary_usd, p.y10_salary_usd,
                 p.net_10yr_usd, p.funding_tier, p.duration_years,
                 p.primary_market, p.notes,
+                p.expected_aid_pct, p.expected_aid_usd,
+                p.best_case_aid_pct, p.best_case_aid_usd,
+                p.aid_type, p.coop_earnings_usd,
+                p.initial_capital_usd,
                 u.name as university_name, u.country, u.region
             FROM programs p
             JOIN universities u ON p.university_id = u.id
@@ -678,15 +787,227 @@ def get_program_networth(program_id):
         lifestyle=lifestyle,
         family_transition_year=family_transition_year,
     )
-    result = calculate_program_networth(
-        program,
-        baseline["total_networth_k"],
-        lifestyle=lifestyle,
-        family_transition_year=family_transition_year,
-    )
-    result["baseline"] = baseline
 
-    return jsonify(result)
+    # Calculate all three scenarios
+    scenarios = {}
+    for scenario in ["no_aid", "expected", "best_case"]:
+        result = calculate_program_networth(
+            program,
+            baseline["total_networth_k"],
+            lifestyle=lifestyle,
+            family_transition_year=family_transition_year,
+            aid_scenario=scenario,
+        )
+        # Remove yearly breakdown for compactness
+        result.pop("yearly_breakdown", None)
+        scenarios[scenario] = result
+
+    # Calculate aid impact
+    aid_impact_expected = scenarios["expected"]["net_benefit_k"] - scenarios["no_aid"]["net_benefit_k"]
+    aid_impact_best_case = scenarios["best_case"]["net_benefit_k"] - scenarios["no_aid"]["net_benefit_k"]
+
+    return jsonify({
+        "program_id": program_id,
+        "university": program["university_name"],
+        "program_name": program["program_name"],
+        "country": program["country"],
+        "raw_tuition_k": program["tuition_usd"],
+        "aid_type": program["aid_type"],
+        "expected_aid_k": program["expected_aid_usd"],
+        "best_case_aid_k": program["best_case_aid_usd"],
+        "coop_earnings_k": program["coop_earnings_usd"],
+        "baseline": baseline,
+        "scenarios": scenarios,
+        "aid_impact": {
+            "expected_vs_no_aid_k": round(aid_impact_expected, 2),
+            "best_case_vs_no_aid_k": round(aid_impact_best_case, 2),
+        },
+        "summary": {
+            "no_aid_net_benefit_k": scenarios["no_aid"]["net_benefit_k"],
+            "expected_net_benefit_k": scenarios["expected"]["net_benefit_k"],
+            "best_case_net_benefit_k": scenarios["best_case"]["net_benefit_k"],
+        }
+    })
+
+
+@app.route("/api/affordability", methods=["GET"])
+def get_affordability():
+    """
+    Get programs filtered by affordability based on user's available savings.
+    Shows which programs the user can realistically start with their current funds.
+
+    Query params (all optional):
+      - available_savings: Available initial capital in USD (default: from user profile)
+      - monthly_side_income: Expected monthly side income during prep period in USD (default: 0)
+      - prep_months: Months until program start to save more (default: 6)
+      - aid_scenario: Financial aid scenario — "no_aid", "expected", or "best_case" (default: expected)
+
+    Returns programs grouped by affordability tier:
+      - affordable: Initial capital <= available funds
+      - stretch: Initial capital <= available + (monthly_income * prep_months)
+      - needs_funding: Requires external loans or family support
+    """
+    from networth_calculator import calculate_all_programs
+    from profile_calibrator import get_profile as _get_profile
+
+    # Get user's available savings from profile if not specified
+    available_savings = _parse_int_param("available_savings")
+    if isinstance(available_savings, tuple):
+        return available_savings
+
+    if available_savings is None:
+        with get_db() as conn:
+            profile = _get_profile(conn)
+            available_savings = profile.get("available_savings_usd", 5000)
+
+    # Parse other params
+    monthly_side_income = _parse_int_param("monthly_side_income")
+    if isinstance(monthly_side_income, tuple):
+        return monthly_side_income
+    monthly_side_income = monthly_side_income or 0
+
+    prep_months = _parse_int_param("prep_months")
+    if isinstance(prep_months, tuple):
+        return prep_months
+    prep_months = prep_months or 6
+
+    # Parse aid scenario (default to expected for affordability calculations)
+    aid_scenario = request.args.get("aid_scenario", "expected")
+    if aid_scenario not in ("no_aid", "expected", "best_case"):
+        return jsonify({"error": "aid_scenario must be 'no_aid', 'expected', or 'best_case'"}), 400
+
+    # Calculate total available funds
+    total_available = available_savings + (monthly_side_income * prep_months)
+
+    # Get all programs
+    data = calculate_all_programs(aid_scenario=aid_scenario)
+    programs = data["programs"]
+
+    # Group by affordability
+    affordable = []
+    stretch = []
+    needs_funding = []
+
+    for p in programs:
+        initial_capital = p.get("initial_capital_usd", 0)
+        shortfall = initial_capital - total_available
+
+        p["initial_capital_usd"] = initial_capital
+        p["shortfall_usd"] = max(0, shortfall)
+        p["affordability_pct"] = round(min(100, (total_available / max(initial_capital, 1)) * 100), 1)
+
+        if initial_capital <= available_savings:
+            p["affordability_tier"] = "affordable"
+            affordable.append(p)
+        elif initial_capital <= total_available:
+            p["affordability_tier"] = "stretch"
+            stretch.append(p)
+        else:
+            p["affordability_tier"] = "needs_funding"
+            needs_funding.append(p)
+
+    # Sort each group by net benefit
+    for group in [affordable, stretch, needs_funding]:
+        group.sort(key=lambda x: x.get("net_benefit_k", 0), reverse=True)
+
+    # Remove yearly breakdown for compactness
+    for group in [affordable, stretch, needs_funding]:
+        for p in group:
+            p.pop("yearly_breakdown", None)
+
+    return jsonify({
+        "available_savings_usd": available_savings,
+        "monthly_side_income_usd": monthly_side_income,
+        "prep_months": prep_months,
+        "total_available_usd": total_available,
+        "aid_scenario": aid_scenario,
+        "summary": {
+            "affordable_count": len(affordable),
+            "stretch_count": len(stretch),
+            "needs_funding_count": len(needs_funding),
+            "total_programs": len(programs),
+        },
+        "affordable": affordable,
+        "stretch": stretch,
+        "needs_funding": needs_funding[:20],  # Limit needs_funding to top 20
+    })
+
+
+
+    """
+    Get scholarship information for programs.
+    Returns aggregated scholarship data by aid type and funding tier.
+
+    Query params (all optional):
+      - aid_type: Filter by aid type (guaranteed_funding, govt_scholarship, ta_ra, merit, etc.)
+      - country: Filter by university country
+      - min_expected_aid: Minimum expected aid in $K
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        query = """
+            SELECT
+                p.id, p.program_name, p.tuition_usd, p.funding_tier,
+                p.expected_aid_pct, p.expected_aid_usd,
+                p.best_case_aid_pct, p.best_case_aid_usd,
+                p.aid_type, p.coop_earnings_usd,
+                u.name as university_name, u.country
+            FROM programs p
+            JOIN universities u ON p.university_id = u.id
+            WHERE 1=1
+        """
+        params = []
+
+        if request.args.get("aid_type"):
+            query += " AND p.aid_type = ?"
+            params.append(request.args.get("aid_type"))
+
+        if request.args.get("country"):
+            query += " AND u.country = ?"
+            params.append(request.args.get("country"))
+
+        min_aid = _parse_int_param("min_expected_aid")
+        if isinstance(min_aid, tuple):
+            return min_aid
+        if min_aid is not None:
+            query += " AND p.expected_aid_usd >= ?"
+            params.append(min_aid)
+
+        query += " ORDER BY p.best_case_aid_usd DESC, p.expected_aid_usd DESC"
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        programs = [dict(row) for row in rows]
+
+    # Generate summary by aid type
+    aid_type_summary = {}
+    for p in programs:
+        aid_type = p["aid_type"] or "none"
+        if aid_type not in aid_type_summary:
+            aid_type_summary[aid_type] = {
+                "count": 0,
+                "avg_expected_aid_k": 0,
+                "avg_best_case_aid_k": 0,
+                "total_expected": 0,
+                "total_best_case": 0,
+            }
+        aid_type_summary[aid_type]["count"] += 1
+        aid_type_summary[aid_type]["total_expected"] += p["expected_aid_usd"] or 0
+        aid_type_summary[aid_type]["total_best_case"] += p["best_case_aid_usd"] or 0
+
+    for aid_type, data in aid_type_summary.items():
+        if data["count"] > 0:
+            data["avg_expected_aid_k"] = round(data["total_expected"] / data["count"], 1)
+            data["avg_best_case_aid_k"] = round(data["total_best_case"] / data["count"], 1)
+        del data["total_expected"]
+        del data["total_best_case"]
+
+    return jsonify({
+        "count": len(programs),
+        "programs": programs,
+        "by_aid_type": aid_type_summary,
+    })
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -850,11 +1171,19 @@ if __name__ == "__main__":
     print("   GET  /api/stats")
     print("   GET  /api/search?q=<query>")
     print("   GET  /api/networth")
-    print("   GET  /api/networth?field=AI/ML&sort_by=net_benefit&compact=true")
+    print("   GET  /api/networth?aid_scenario=expected&field=AI/ML&compact=true")
     print("   GET  /api/networth/<program_id>")
+    print("   GET  /api/networth/<program_id>?aid_scenario=best_case")
+    print("   GET  /api/networth/<program_id>/compare  (all 3 aid scenarios)")
+    print("   GET  /api/scholarships")
+    print("   GET  /api/scholarships?aid_type=guaranteed_funding")
+    print("   GET  /api/affordability")
+    print("   GET  /api/affordability?available_savings=5000&monthly_side_income=2000")
     print("   GET  /api/networth/career")
     print("   GET  /api/networth/career?node_type=trading&compact=true")
     print("   GET  /api/networth/career/<node_id>")
-    print("\n🔗 Test it: http://localhost:5000/api/career-nodes\n")
+    print("\n💰 Aid Scenarios: no_aid (default), expected, best_case")
+    print("💵 Initial Capital: Filter by max_initial_capital, or use /api/affordability")
+    print("\n🔗 Test it: http://localhost:5000/api/networth?aid_scenario=expected&compact=true\n")
 
     app.run(debug=True, host="0.0.0.0", port=5000)
