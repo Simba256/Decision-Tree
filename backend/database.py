@@ -220,6 +220,42 @@ def create_database():
         )
     """)
 
+    # Tax country profiles: consolidated country tax calculation rules
+    # This table drives the generic _calculate_country_tax() function
+    # Replaces per-country functions with data-driven configuration
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tax_country_profiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            country TEXT NOT NULL UNIQUE,
+            currency TEXT NOT NULL DEFAULT 'USD',
+            -- Social contributions
+            social_rate REAL DEFAULT 0,
+            social_cap_lc REAL,
+            -- Surtax on income tax
+            surtax_rate REAL DEFAULT 0,
+            surtax_threshold_lc REAL,
+            -- Personal allowance / standard deduction
+            personal_allowance_lc REAL DEFAULT 0,
+            pa_taper_start_lc REAL,
+            pa_taper_rate REAL DEFAULT 0.5,
+            -- Professional expense deduction (France-style)
+            professional_deduction_rate REAL DEFAULT 0,
+            -- Local/municipal tax
+            local_tax_rate REAL DEFAULT 0,
+            -- Tax ceiling (Denmark-style cap)
+            tax_ceiling REAL,
+            -- Cess on income tax (India-style)
+            cess_rate REAL DEFAULT 0,
+            -- Standard rate cap (Hong Kong-style)
+            standard_rate_cap REAL,
+            -- Special calculation strategy (for complex cases)
+            -- Values: 'standard', 'uk_pa_taper', 'japan_deduction', 'canada_surtax', 'hk_standard_cap'
+            calculation_strategy TEXT DEFAULT 'standard',
+            -- Notes for documentation
+            notes TEXT
+        )
+    """)
+
     # Living costs: per-city annual costs for student/single/family
     # Two lifestyle tiers: frugal (default) and comfortable
     cursor.execute("""
@@ -309,6 +345,9 @@ def create_database():
     )
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_tax_config_country ON tax_config(country)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tax_country_profiles ON tax_country_profiles(country)"
     )
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_market_mappings_market ON market_mappings(primary_market)"

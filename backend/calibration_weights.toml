@@ -1,0 +1,142 @@
+# Calibration Weights for Profile-Based Edge Probability Adjustment
+# ===================================================================
+#
+# All tunable calibration weights in one place.
+# A multiplier > 1.0 boosts an edge probability, < 1.0 suppresses it,
+# and 1.0 means no change.
+#
+# These weights are applied to career path edges based on user profile
+# factors, then child groups are re-normalized to sum to 1.0.
+
+# ─── Risk Tolerance (root-level branch weights) ─────────────────────────────
+[risk_tolerance]
+# High risk → risky paths (trading/startup/freelance)
+high_risky_boost = 1.4
+high_stable_suppress = 0.85
+# Low risk → risky paths suppressed, stable boosted
+low_risky_suppress = 0.6
+low_stable_boost = 1.2
+# Trading decisions within path
+high_trade_fulltime = 1.3  # more likely full-time trading
+high_trade_quit = 0.7      # less likely to quit trading
+low_trade_fulltime = 0.7   # less likely full-time trading
+low_trade_quit = 1.3       # more likely to quit trading
+# Startup decisions within path
+high_startup_boost = 1.2   # startup scale/funding boost
+high_startup_abandon = 0.8 # less likely to abandon startup
+low_startup_suppress = 0.8 # startup scale/funding suppressed
+low_startup_abandon = 1.2  # more likely to abandon startup
+
+# ─── Performance Rating ─────────────────────────────────────────────────────
+[performance]
+# Top performer effects
+top_promoted = 1.35         # promoted at Motive
+top_notpromoted = 0.70      # less likely stuck unpromoted
+top_retry_promoted = 1.30   # retry promotion boost
+top_retry_leave = 0.75      # less likely to leave after retry
+top_senior = 1.20           # staff/senior promotions boosted
+# Average performer effects
+avg_promoted = 0.65         # promoted suppressed
+avg_notpromoted = 1.40      # more likely stuck unpromoted
+avg_retry_promoted = 0.70   # retry suppressed
+avg_retry_leave = 1.25      # more likely to leave
+avg_senior = 0.80           # senior suppressed
+# Below average performer effects
+below_promoted = 0.35       # promoted heavily suppressed
+below_notpromoted = 1.70    # most likely stuck unpromoted
+below_retry_promoted = 0.45 # retry heavily suppressed
+below_retry_leave = 1.50    # most likely to leave
+below_senior = 0.60         # senior heavily suppressed
+
+# ─── English Level ──────────────────────────────────────────────────────────
+[english]
+# Native speaker effects
+native_remote = 1.25        # remote/freelance boost
+native_local = 0.90         # slightly less likely to stay local
+# Intermediate effects
+intermediate_remote = 0.65  # remote suppressed
+intermediate_local = 1.15   # local boost
+# Basic effects
+basic_remote = 0.35         # remote heavily suppressed
+basic_local = 1.30          # strong local boost
+
+# ─── Years of Experience ────────────────────────────────────────────────────
+[experience]
+# Baseline range (no adjustment applied)
+baseline_low = 1.5
+baseline_high = 2.5
+# 5+ years effects
+five_plus_promoted = 1.35   # promotion boost
+five_plus_remote = 1.30     # remote job boost
+five_plus_stagnate = 0.70   # less likely to stagnate
+# 3+ years effects
+three_plus_promoted = 1.15  # mild promotion boost
+three_plus_remote = 1.10    # mild remote boost
+three_plus_stagnate = 0.85  # slightly less stagnation
+# 1 year or less effects
+one_minus_promoted = 0.65   # promotion suppressed
+one_minus_remote = 0.70     # remote suppressed
+one_minus_stagnate = 1.30   # more likely to stagnate
+
+# ─── Available Savings (USD) ────────────────────────────────────────────────
+[savings]
+# Trading entry thresholds
+twenty_k_trading = 1.30     # $20k+ → trading entry boost
+ten_k_trading = 1.15        # $10k+ → mild trading boost
+two_k_trading = 0.60        # <=2k → trading entry suppressed
+one_k_trading = 0.30        # <=1k → trading heavily suppressed
+# Startup entry thresholds
+fifteen_k_startup = 1.25    # $15k+ → startup entry boost
+ten_k_startup = 1.10        # $10k+ → mild startup boost
+two_k_startup = 0.65        # <=2k → startup entry suppressed
+# Stocks/options (need more capital)
+twenty_k_stocks = 1.30      # $20k+ → stocks/options boost
+three_k_stocks = 0.60       # <=3k → stocks/options suppressed
+# Crypto (can start smaller)
+one_k_crypto = 0.70         # <=1k → crypto suppressed
+ten_k_crypto = 1.10         # $10k+ → crypto boost
+# Trading profitability (scales with capital)
+twenty_k_profitable = 1.20  # $20k+ → profitability boost
+two_k_profitable = 0.75     # <=2k → profitability suppressed
+
+# ─── Quantitative Aptitude ──────────────────────────────────────────────────
+[quant_aptitude]
+# Strong quant effects
+strong_algo = 1.40          # algo/quant trading boost
+strong_profitable = 1.20    # general trading profit boost
+strong_loss = 0.75          # less likely trading losses
+# Weak quant effects
+weak_algo = 0.55            # algo trading suppressed
+weak_profitable = 0.80      # trading profit suppressed
+weak_loss = 1.35            # more likely trading losses
+
+# ─── Side Projects ──────────────────────────────────────────────────────────
+[side_projects]
+startup_traction = 1.30     # startup traction/funding boost
+startup_failed = 0.75       # less likely startup failure
+remote_boost = 1.15         # remote job portfolio boost
+startup_root = 1.20         # root→startup boost
+
+# ─── Freelance Profile ──────────────────────────────────────────────────────
+[freelance_profile]
+root = 1.35                 # root→freelance boost
+success = 1.40              # freelance premium/fulltime boost
+side = 1.15                 # side-freelance boost
+dried = 0.65                # less likely clients dry up
+platform = 1.20             # platform freelancing boost
+
+# ─── Publications ───────────────────────────────────────────────────────────
+[publications]
+career = 1.15               # career advancement boost
+remote = 1.20               # remote ML job boost
+startup_ai = 1.15           # AI SaaS startup boost
+
+# ─── GPA ────────────────────────────────────────────────────────────────────
+[gpa]
+# Baseline range (no adjustment applied)
+baseline_low = 3.3
+baseline_high = 3.7
+# High GPA (>= 3.8) effects
+high_promoted = 1.10        # slight promotion boost
+# Low GPA (<= 2.5) effects
+low_promoted = 0.90         # slight promotion suppress

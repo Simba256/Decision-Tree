@@ -32,7 +32,15 @@ All values in $K USD unless otherwise noted.
 import sqlite3
 from typing import Optional
 
-from config import DB_PATH, get_db, BASELINE_ANNUAL_SALARY_USD_K, BASELINE_ANNUAL_GROWTH
+from config import (
+    DB_PATH,
+    get_db,
+    BASELINE_ANNUAL_SALARY_USD_K,
+    BASELINE_ANNUAL_GROWTH,
+    MASTERS_TOTAL_YEARS,
+    MASTERS_DEFAULT_FAMILY_YEAR,
+    MASTERS_DEFAULT_DURATION,
+)
 from calculator_common import (
     interpolate_salary,
     avg_summary,
@@ -47,16 +55,15 @@ from living_costs import (
 )
 
 # ─── Configuration ───────────────────────────────────────────────────────────
+# Constants imported from config.py for consistency:
+# - MASTERS_TOTAL_YEARS (12): 2yr study + 10yr work
+# - MASTERS_DEFAULT_FAMILY_YEAR (5): calendar year for single→family transition
+# - MASTERS_DEFAULT_DURATION (2.0): default program duration
 
-# Default program duration in years
-DEFAULT_DURATION = 2.0
-
-# Calendar year when household transitions from single to family
-# Year 5 = after 2yr study + 2yr work as single
-FAMILY_TRANSITION_YEAR = 5
-
-# Total calendar window
-TOTAL_YEARS = 12  # 2yr study + 10yr work experience
+# Local aliases for backwards compatibility
+DEFAULT_DURATION = MASTERS_DEFAULT_DURATION
+FAMILY_TRANSITION_YEAR = MASTERS_DEFAULT_FAMILY_YEAR
+TOTAL_YEARS = MASTERS_TOTAL_YEARS
 
 
 # ─── Core Calculation Functions ──────────────────────────────────────────────

@@ -6,9 +6,20 @@ Serves program data from SQLite database
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import json
-from typing import Optional, Tuple, Union
 
 from config import get_db, setup_logging, get_logger
+from validators import (
+    validate_params,
+    validate_optional_int,
+    validate_optional_float,
+    LIFESTYLE,
+    AID_SCENARIO,
+    FAMILY_YEAR_MASTERS,
+    FAMILY_YEAR_CAREER,
+    NODE_TYPE,
+    NETWORTH_SORT,
+    CAREER_SORT,
+)
 
 setup_logging()
 logger = get_logger(__name__)
@@ -40,74 +51,6 @@ def handle_exception(e):
     return jsonify({"error": "Internal server error"}), 500
 
 
-# ─── Request Validation Helpers ──────────────────────────────────────────────
-
-
-def _parse_lifestyle() -> Union[str, Tuple]:
-    """
-    Parse and validate the 'lifestyle' query parameter.
-    Returns the validated string, or a (jsonify(...), 400) error tuple.
-    """
-    lifestyle = request.args.get("lifestyle", "frugal")
-    if lifestyle not in ("frugal", "comfortable"):
-        return jsonify({"error": "lifestyle must be 'frugal' or 'comfortable'"}), 400
-    return lifestyle
-
-
-def _parse_family_year(max_year: int = 13) -> Union[Optional[int], Tuple]:
-    """
-    Parse and validate the 'family_year' query parameter.
-    Returns the validated int (or None), or a (jsonify(...), 400) error tuple.
-
-    Args:
-        max_year: Upper bound for family_year (13 for masters, 11 for career paths).
-    """
-    raw = request.args.get("family_year")
-    if not raw:
-        return None
-    try:
-        family_year = int(raw)
-        if not (1 <= family_year <= max_year):
-            return jsonify(
-                {
-                    "error": f"family_year must be between 1 and {max_year} ({max_year} = never)"
-                }
-            ), 400
-        return family_year
-    except (ValueError, TypeError):
-        return jsonify(
-            {"error": f"family_year must be an integer between 1 and {max_year}"}
-        ), 400
-
-
-def _parse_int_param(name: str) -> Union[Optional[int], Tuple]:
-    """
-    Parse an optional integer query parameter safely.
-    Returns the validated int (or None), or a (jsonify(...), 400) error tuple.
-    """
-    raw = request.args.get(name)
-    if not raw:
-        return None
-    try:
-        return int(raw)
-    except (ValueError, TypeError):
-        return jsonify({"error": f"'{name}' must be a valid integer"}), 400
-
-
-def _parse_float_param(name: str) -> Union[Optional[float], Tuple]:
-    """
-    Parse an optional float query parameter safely.
-    Returns the validated float (or None), or a (jsonify(...), 400) error tuple.
-    """
-    raw = request.args.get(name)
-    if not raw:
-        return None
-    try:
-        return float(raw)
-    except (ValueError, TypeError):
-        return jsonify({"error": f"'{name}' must be a valid number"}), 400
-
-
 @app.route("/api/health", methods=["GET"])
 def health():
     """Health check endpoint"""
@@ -125,63 +68,38 @@ def get_programs():
       - max_tuition: Max tuition in USD (thousands)
       - min_y10_salary: Min year 10 salary (thousands)
     """
-    # Validate params before opening connection
-    max_tuition = None
-    if request.args.get("max_tuition"):
-        max_tuition = _parse_int_param("max_tuition")
-        if isinstance(max_tuition, tuple):
-            return max_tuition
+    from query_builder import QueryBuilder
 
-    min_salary = None
-    if request.args.get("min_y10_salary"):
-        min_salary = _parse_int_param("min_y10_salary")
-        if isinstance(min_salary, tuple):
-            return min_salary
+    # Validate params before opening connection
+    max_tuition, error = validate_optional_int(request.args, "max_tuition")
+    if error:
+        return error
+    min_salary, error = validate_optional_int(request.args, "min_y10_salary")
+    if error:
+        return error
+
+    qb = QueryBuilder("""
+        SELECT
+            p.id, p.program_name, p.field, p.tuition_usd,
+            p.y1_salary_usd, p.y5_salary_usd, p.y10_salary_usd,
+            p.p90_y10_usd, p.net_10yr_usd, p.funding_tier,
+            p.primary_market, p.key_employers, p.notes,
+            u.name as university_name, u.country, u.region, u.tier as university_tier
+        FROM programs p
+        JOIN universities u ON p.university_id = u.id
+    """)
+    qb.add_filter("p.field = ?", request.args.get("field"))
+    qb.add_filter("p.funding_tier = ?", request.args.get("funding_tier"))
+    qb.add_filter("u.country = ?", request.args.get("country"))
+    qb.add_filter("p.tuition_usd <= ?", max_tuition)
+    qb.add_filter("p.y10_salary_usd >= ?", min_salary)
+
+    query, params = qb.build()
 
     with get_db() as conn:
         cursor = conn.cursor()
-
-        # Base query
-        query = """
-            SELECT
-                p.id, p.program_name, p.field, p.tuition_usd,
-                p.y1_salary_usd, p.y5_salary_usd, p.y10_salary_usd,
-                p.p90_y10_usd, p.net_10yr_usd, p.funding_tier,
-                p.primary_market, p.key_employers, p.notes,
-                u.name as university_name, u.country, u.region, u.tier as university_tier
-            FROM programs p
-            JOIN universities u ON p.university_id = u.id
-            WHERE 1=1
-        """
-
-        params = []
-
-        # Apply filters
-        if request.args.get("field"):
-            query += " AND p.field = ?"
-            params.append(request.args.get("field"))
-
-        if request.args.get("funding_tier"):
-            query += " AND p.funding_tier = ?"
-            params.append(request.args.get("funding_tier"))
-
-        if request.args.get("country"):
-            query += " AND u.country = ?"
-            params.append(request.args.get("country"))
-
-        if max_tuition is not None:
-            query += " AND p.tuition_usd <= ?"
-            params.append(max_tuition)
-
-        if min_salary is not None:
-            query += " AND p.y10_salary_usd >= ?"
-            params.append(min_salary)
-
-        # Execute query
         cursor.execute(query, params)
         rows = cursor.fetchall()
-
-        # Convert to list of dicts
         programs = [dict(row) for row in rows]
 
     return jsonify({"count": len(programs), "programs": programs})
@@ -308,17 +226,15 @@ def get_career_nodes():
     Query params:
       - node_type: Filter by type (career, trading, startup, freelance)
     """
+    from query_builder import QueryBuilder
+
+    qb = QueryBuilder("SELECT * FROM career_nodes")
+    qb.add_filter("node_type = ?", request.args.get("node_type"))
+    qb.order_by("phase, id")
+    query, params = qb.build()
+
     with get_db() as conn:
         cursor = conn.cursor()
-
-        query = "SELECT * FROM career_nodes WHERE 1=1"
-        params = []
-
-        if request.args.get("node_type"):
-            query += " AND node_type = ?"
-            params.append(request.args.get("node_type"))
-
-        query += " ORDER BY phase, id"
         cursor.execute(query, params)
         rows = cursor.fetchall()
 
@@ -539,15 +455,35 @@ def search():
     return jsonify({"query": query_text, "count": len(results), "results": results})
 
 
-def _parse_aid_scenario():
-    """
-    Parse and validate the 'aid_scenario' query parameter.
-    Returns the validated string, or a (jsonify(...), 400) error tuple.
-    """
-    scenario = request.args.get("aid_scenario", "no_aid")
-    if scenario not in ("no_aid", "expected", "best_case"):
-        return jsonify({"error": "aid_scenario must be 'no_aid', 'expected', or 'best_case'"}), 400
-    return scenario
+# ─── Networth Endpoint Helpers ──────────────────────────────────────────────
+
+
+def _filter_programs(programs: list, args: dict, max_capital: int = None) -> list:
+    """Apply filters to program list based on request args."""
+    if args.get("field"):
+        programs = [p for p in programs if p["field"] == args.get("field")]
+    if args.get("funding_tier"):
+        programs = [p for p in programs if p["funding_tier"] == args.get("funding_tier")]
+    if args.get("work_country"):
+        programs = [p for p in programs if p["work_country"] == args.get("work_country")]
+    if max_capital is not None:
+        programs = [p for p in programs if p.get("initial_capital_usd", 0) <= max_capital]
+    return programs
+
+
+def _sort_programs(programs: list, sort_by: str, sort_map: dict) -> None:
+    """Sort programs in place by the specified field."""
+    key = sort_map.get(sort_by, "net_benefit_k")
+    # For initial_capital and cost, lower is better
+    reverse = sort_by not in ("cost", "initial_capital")
+    programs.sort(key=lambda x: x.get(key, 0), reverse=reverse)
+
+
+def _apply_compact_mode(programs: list, compact: bool) -> None:
+    """Strip yearly breakdowns from programs if compact mode is enabled."""
+    if compact:
+        for p in programs:
+            p.pop("yearly_breakdown", None)
 
 
 @app.route("/api/networth", methods=["GET"])
@@ -572,61 +508,35 @@ def get_networth():
     """
     from networth_calculator import calculate_all_programs
 
-    # Parse optional baseline overrides from query params
-    baseline_salary = _parse_float_param("baseline_salary")
-    if isinstance(baseline_salary, tuple):
-        return baseline_salary
-    baseline_growth = _parse_float_param("baseline_growth")
-    if isinstance(baseline_growth, tuple):
-        return baseline_growth
+    # Validate parameters
+    params, error = validate_params(request.args, [LIFESTYLE, AID_SCENARIO, FAMILY_YEAR_MASTERS])
+    if error:
+        return error
 
-    # Parse lifestyle tier
-    lifestyle = _parse_lifestyle()
-    if isinstance(lifestyle, tuple):
-        return lifestyle
-
-    # Parse family transition year
-    family_transition_year = _parse_family_year(max_year=13)
-    if isinstance(family_transition_year, tuple):
-        return family_transition_year
-
-    # Parse aid scenario
-    aid_scenario = _parse_aid_scenario()
-    if isinstance(aid_scenario, tuple):
-        return aid_scenario
+    baseline_salary, error = validate_optional_float(request.args, "baseline_salary")
+    if error:
+        return error
+    baseline_growth, error = validate_optional_float(request.args, "baseline_growth")
+    if error:
+        return error
+    max_capital, error = validate_optional_int(request.args, "max_initial_capital")
+    if error:
+        return error
+    limit, error = validate_optional_int(request.args, "limit")
+    if error:
+        return error
 
     data = calculate_all_programs(
         baseline_salary=baseline_salary,
         baseline_growth=baseline_growth,
-        lifestyle=lifestyle,
-        family_transition_year=family_transition_year,
-        aid_scenario=aid_scenario,
+        lifestyle=params["lifestyle"],
+        family_transition_year=params["family_year"],
+        aid_scenario=params["aid_scenario"],
     )
 
-    # Filter
-    programs = data["programs"]
-    if request.args.get("field"):
-        programs = [p for p in programs if p["field"] == request.args.get("field")]
-    if request.args.get("funding_tier"):
-        programs = [
-            p for p in programs if p["funding_tier"] == request.args.get("funding_tier")
-        ]
-    if request.args.get("work_country"):
-        programs = [
-            p for p in programs if p["work_country"] == request.args.get("work_country")
-        ]
+    # Filter, sort, limit, compact
+    programs = _filter_programs(data["programs"], request.args, max_capital)
 
-    # Filter by max initial capital (affordability filter)
-    max_capital = _parse_int_param("max_initial_capital")
-    if isinstance(max_capital, tuple):
-        return max_capital
-    if max_capital is not None:
-        programs = [
-            p for p in programs if p.get("initial_capital_usd", 0) <= max_capital
-        ]
-
-    # Sort
-    sort_key = request.args.get("sort_by", "net_benefit")
     sort_map = {
         "net_benefit": "net_benefit_k",
         "cost": "total_study_cost_k",
@@ -635,22 +545,12 @@ def get_networth():
         "networth": "masters_networth_k",
         "initial_capital": "initial_capital_usd",
     }
-    key = sort_map.get(sort_key, "net_benefit_k")
-    # For initial_capital, lower is better; for cost, lower is also better
-    reverse = sort_key not in ("cost", "initial_capital")
-    programs.sort(key=lambda x: x.get(key, 0), reverse=reverse)
+    _sort_programs(programs, request.args.get("sort_by", "net_benefit"), sort_map)
 
-    # Limit
-    limit = _parse_int_param("limit")
-    if isinstance(limit, tuple):
-        return limit
     if limit is not None:
         programs = programs[:limit]
 
-    # Compact mode — strip yearly breakdowns
-    if request.args.get("compact", "").lower() == "true":
-        for p in programs:
-            p.pop("yearly_breakdown", None)
+    _apply_compact_mode(programs, request.args.get("compact", "").lower() == "true")
 
     data["programs"] = programs
     data["summary"]["total_filtered"] = len(programs)
@@ -673,20 +573,10 @@ def get_program_networth(program_id):
         calculate_baseline_networth,
     )
 
-    # Parse lifestyle tier
-    lifestyle = _parse_lifestyle()
-    if isinstance(lifestyle, tuple):
-        return lifestyle
-
-    # Parse family transition year
-    family_transition_year = _parse_family_year(max_year=13)
-    if isinstance(family_transition_year, tuple):
-        return family_transition_year
-
-    # Parse aid scenario
-    aid_scenario = _parse_aid_scenario()
-    if isinstance(aid_scenario, tuple):
-        return aid_scenario
+    # Validate parameters
+    params, error = validate_params(request.args, [LIFESTYLE, AID_SCENARIO, FAMILY_YEAR_MASTERS])
+    if error:
+        return error
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -716,15 +606,15 @@ def get_program_networth(program_id):
 
     program = dict(row)
     baseline = calculate_baseline_networth(
-        lifestyle=lifestyle,
-        family_transition_year=family_transition_year,
+        lifestyle=params["lifestyle"],
+        family_transition_year=params["family_year"],
     )
     result = calculate_program_networth(
         program,
         baseline["total_networth_k"],
-        lifestyle=lifestyle,
-        family_transition_year=family_transition_year,
-        aid_scenario=aid_scenario,
+        lifestyle=params["lifestyle"],
+        family_transition_year=params["family_year"],
+        aid_scenario=params["aid_scenario"],
     )
     result["baseline"] = baseline
 
@@ -746,15 +636,10 @@ def get_program_networth_comparison(program_id):
         calculate_baseline_networth,
     )
 
-    # Parse lifestyle tier
-    lifestyle = _parse_lifestyle()
-    if isinstance(lifestyle, tuple):
-        return lifestyle
-
-    # Parse family transition year
-    family_transition_year = _parse_family_year(max_year=13)
-    if isinstance(family_transition_year, tuple):
-        return family_transition_year
+    # Validate parameters
+    params, error = validate_params(request.args, [LIFESTYLE, FAMILY_YEAR_MASTERS])
+    if error:
+        return error
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -784,8 +669,8 @@ def get_program_networth_comparison(program_id):
 
     program = dict(row)
     baseline = calculate_baseline_networth(
-        lifestyle=lifestyle,
-        family_transition_year=family_transition_year,
+        lifestyle=params["lifestyle"],
+        family_transition_year=params["family_year"],
     )
 
     # Calculate all three scenarios
@@ -794,8 +679,8 @@ def get_program_networth_comparison(program_id):
         result = calculate_program_networth(
             program,
             baseline["total_networth_k"],
-            lifestyle=lifestyle,
-            family_transition_year=family_transition_year,
+            lifestyle=params["lifestyle"],
+            family_transition_year=params["family_year"],
             aid_scenario=scenario,
         )
         # Remove yearly breakdown for compactness
@@ -849,32 +734,40 @@ def get_affordability():
     """
     from networth_calculator import calculate_all_programs
     from profile_calibrator import get_profile as _get_profile
+    from validators import ParamValidator
 
-    # Get user's available savings from profile if not specified
-    available_savings = _parse_int_param("available_savings")
-    if isinstance(available_savings, tuple):
-        return available_savings
+    # Create aid_scenario validator with "expected" as default for affordability
+    aid_scenario_expected = ParamValidator(
+        name="aid_scenario",
+        param_type=str,
+        default="expected",
+        valid_values={"no_aid", "expected", "best_case"},
+        error_msg="aid_scenario must be 'no_aid', 'expected', or 'best_case'",
+    )
+    params, error = validate_params(request.args, [aid_scenario_expected])
+    if error:
+        return error
 
+    # Get optional integer params
+    available_savings, error = validate_optional_int(request.args, "available_savings")
+    if error:
+        return error
+    monthly_side_income, error = validate_optional_int(request.args, "monthly_side_income")
+    if error:
+        return error
+    prep_months, error = validate_optional_int(request.args, "prep_months")
+    if error:
+        return error
+
+    # Get available savings from profile if not specified
     if available_savings is None:
         with get_db() as conn:
             profile = _get_profile(conn)
             available_savings = profile.get("available_savings_usd", 5000)
 
-    # Parse other params
-    monthly_side_income = _parse_int_param("monthly_side_income")
-    if isinstance(monthly_side_income, tuple):
-        return monthly_side_income
     monthly_side_income = monthly_side_income or 0
-
-    prep_months = _parse_int_param("prep_months")
-    if isinstance(prep_months, tuple):
-        return prep_months
     prep_months = prep_months or 6
-
-    # Parse aid scenario (default to expected for affordability calculations)
-    aid_scenario = request.args.get("aid_scenario", "expected")
-    if aid_scenario not in ("no_aid", "expected", "best_case"):
-        return jsonify({"error": "aid_scenario must be 'no_aid', 'expected', or 'best_case'"}), 400
+    aid_scenario = params["aid_scenario"]
 
     # Calculate total available funds
     total_available = available_savings + (monthly_side_income * prep_months)
@@ -933,83 +826,6 @@ def get_affordability():
     })
 
 
-
-    """
-    Get scholarship information for programs.
-    Returns aggregated scholarship data by aid type and funding tier.
-
-    Query params (all optional):
-      - aid_type: Filter by aid type (guaranteed_funding, govt_scholarship, ta_ra, merit, etc.)
-      - country: Filter by university country
-      - min_expected_aid: Minimum expected aid in $K
-    """
-    with get_db() as conn:
-        cursor = conn.cursor()
-
-        query = """
-            SELECT
-                p.id, p.program_name, p.tuition_usd, p.funding_tier,
-                p.expected_aid_pct, p.expected_aid_usd,
-                p.best_case_aid_pct, p.best_case_aid_usd,
-                p.aid_type, p.coop_earnings_usd,
-                u.name as university_name, u.country
-            FROM programs p
-            JOIN universities u ON p.university_id = u.id
-            WHERE 1=1
-        """
-        params = []
-
-        if request.args.get("aid_type"):
-            query += " AND p.aid_type = ?"
-            params.append(request.args.get("aid_type"))
-
-        if request.args.get("country"):
-            query += " AND u.country = ?"
-            params.append(request.args.get("country"))
-
-        min_aid = _parse_int_param("min_expected_aid")
-        if isinstance(min_aid, tuple):
-            return min_aid
-        if min_aid is not None:
-            query += " AND p.expected_aid_usd >= ?"
-            params.append(min_aid)
-
-        query += " ORDER BY p.best_case_aid_usd DESC, p.expected_aid_usd DESC"
-
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        programs = [dict(row) for row in rows]
-
-    # Generate summary by aid type
-    aid_type_summary = {}
-    for p in programs:
-        aid_type = p["aid_type"] or "none"
-        if aid_type not in aid_type_summary:
-            aid_type_summary[aid_type] = {
-                "count": 0,
-                "avg_expected_aid_k": 0,
-                "avg_best_case_aid_k": 0,
-                "total_expected": 0,
-                "total_best_case": 0,
-            }
-        aid_type_summary[aid_type]["count"] += 1
-        aid_type_summary[aid_type]["total_expected"] += p["expected_aid_usd"] or 0
-        aid_type_summary[aid_type]["total_best_case"] += p["best_case_aid_usd"] or 0
-
-    for aid_type, data in aid_type_summary.items():
-        if data["count"] > 0:
-            data["avg_expected_aid_k"] = round(data["total_expected"] / data["count"], 1)
-            data["avg_best_case_aid_k"] = round(data["total_best_case"] / data["count"], 1)
-        del data["total_expected"]
-        del data["total_best_case"]
-
-    return jsonify({
-        "count": len(programs),
-        "programs": programs,
-        "by_aid_type": aid_type_summary,
-    })
-
-
 # ═══════════════════════════════════════════════════════════════════════════
 # Career Path Net Worth Endpoints (Trading / Startup / Freelance / Career)
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1034,51 +850,37 @@ def get_career_networth():
     """
     from career_networth_calculator import calculate_all_career_paths
 
-    # Parse node_type filter
-    node_type = request.args.get("node_type")
-    if node_type and node_type not in ("career", "trading", "startup", "freelance"):
-        return jsonify(
-            {
-                "error": "node_type must be 'career', 'trading', 'startup', or 'freelance'"
-            }
-        ), 400
+    # Validate parameters
+    params, error = validate_params(request.args, [LIFESTYLE, FAMILY_YEAR_CAREER, NODE_TYPE, CAREER_SORT])
+    if error:
+        return error
+
+    limit, error = validate_optional_int(request.args, "limit")
+    if error:
+        return error
 
     # Parse leaf_only
     leaf_only = request.args.get("leaf_only", "true").lower() != "false"
 
-    # Parse lifestyle tier
-    lifestyle = _parse_lifestyle()
-    if isinstance(lifestyle, tuple):
-        return lifestyle
-
-    # Parse family transition year
-    family_transition_year = _parse_family_year(max_year=11)
-    if isinstance(family_transition_year, tuple):
-        return family_transition_year
-
     data = calculate_all_career_paths(
-        node_type=node_type,
+        node_type=params["node_type"],
         leaf_only=leaf_only,
-        lifestyle=lifestyle,
-        family_transition_year=family_transition_year,
+        lifestyle=params["lifestyle"],
+        family_transition_year=params["family_year"],
     )
 
     # Sort
     results = data["results"]
-    sort_key = request.args.get("sort_by", "net_benefit")
     sort_map = {
         "net_benefit": "net_benefit_k",
         "y1": "y1_income_k",
         "y10": "y10_income_k",
         "networth": "path_networth_k",
     }
-    key = sort_map.get(sort_key, "net_benefit_k")
+    key = sort_map.get(params["sort_by"], "net_benefit_k")
     results.sort(key=lambda x: x.get(key, 0), reverse=True)
 
     # Limit
-    limit = _parse_int_param("limit")
-    if isinstance(limit, tuple):
-        return limit
     if limit is not None:
         results = results[:limit]
 
@@ -1108,15 +910,10 @@ def get_career_node_networth(node_id):
         calculate_career_baseline,
     )
 
-    # Parse lifestyle tier
-    lifestyle = _parse_lifestyle()
-    if isinstance(lifestyle, tuple):
-        return lifestyle
-
-    # Parse family transition year
-    family_transition_year = _parse_family_year(max_year=11)
-    if isinstance(family_transition_year, tuple):
-        return family_transition_year
+    # Validate parameters
+    params, error = validate_params(request.args, [LIFESTYLE, FAMILY_YEAR_CAREER])
+    if error:
+        return error
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -1137,14 +934,14 @@ def get_career_node_networth(node_id):
         ), 400
 
     baseline = calculate_career_baseline(
-        lifestyle=lifestyle,
-        family_transition_year=family_transition_year,
+        lifestyle=params["lifestyle"],
+        family_transition_year=params["family_year"],
     )
     result = calculate_career_node_networth(
         node,
         baseline["total_networth_k"],
-        lifestyle=lifestyle,
-        family_transition_year=family_transition_year,
+        lifestyle=params["lifestyle"],
+        family_transition_year=params["family_year"],
     )
     result["baseline"] = baseline
 

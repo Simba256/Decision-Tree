@@ -12,14 +12,22 @@ Main entry point:
     calculate_annual_tax(gross_usd_k, country, us_state=None) -> after_tax_usd_k
 
 The function returns the annual after-tax income in $K USD.
+
+Architecture:
+    - Tax configuration loaded from DB (brackets, config values)
+    - Strategy functions handle country-specific calculation patterns
+    - _calculate_country_tax() dispatches to appropriate strategy
+    - USA handled specially due to federal + state + city complexity
 """
 
 import sqlite3
-from typing import Optional
-
-# ─── Database Loading ────────────────────────────────────────────────────────
+from dataclasses import dataclass
+from typing import Optional, Callable
 
 from config import DB_PATH
+
+
+# ─── Database Loading ─────────────────────────────────────────────────────────
 
 
 def _load_exchange_rates() -> dict[str, float]:
@@ -94,22 +102,24 @@ def _cfg_usd(
     return config[(country, scope, key)] / fx[currency]
 
 
-# ─── Module-level caches (loaded once at import time) ────────────────────────
+def _cfg_get(config: dict, country: str, scope: str, key: str, default: float = 0.0) -> float:
+    """Helper to get a config value with a default if missing."""
+    return config.get((country, scope, key), default)
+
+
+# ─── Module-level caches (loaded once at import time) ─────────────────────────
 
 FX = _load_exchange_rates()
 _ALL_BRACKETS = _load_all_brackets(FX)
 _ALL_CONFIG = _load_all_config()
 
 
-# ─── Helper: get brackets for a country/scope ───────────────────────────────
+# ─── Helper Functions ─────────────────────────────────────────────────────────
 
 
 def _get_brackets(country: str, scope: str) -> list[tuple[float, float]]:
     """Get brackets for a (country, scope) pair from the loaded cache."""
     return _ALL_BRACKETS.get((country, scope), [])
-
-
-# ─── Exchange rate helper (kept for compatibility with per-country functions) ─
 
 
 def _lc_to_usd(amount_lc: float, currency: str) -> float:
@@ -137,9 +147,9 @@ def _apply_brackets(gross_usd: float, brackets: list[tuple[float, float]]) -> fl
     return tax
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# US FEDERAL TAX — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
+# US TAX CALCULATION — Special handling for federal + state + city
+# ═══════════════════════════════════════════════════════════════════════════════
 
 US_FEDERAL_BRACKETS = _get_brackets("USA", "federal")
 
@@ -153,21 +163,7 @@ MEDICARE_SURTAX_THRESHOLD = _cfg(
 )
 MEDICARE_SURTAX_RATE = _cfg(_ALL_CONFIG, "USA", "federal", "medicare_surtax_rate")
 
-
-def _us_fica(gross_usd: float) -> float:
-    """Calculate FICA taxes (Social Security + Medicare)."""
-    ss = min(gross_usd, SS_WAGE_BASE) * SS_RATE
-    medicare = gross_usd * MEDICARE_RATE
-    if gross_usd > MEDICARE_SURTAX_THRESHOLD:
-        medicare += (gross_usd - MEDICARE_SURTAX_THRESHOLD) * MEDICARE_SURTAX_RATE
-    return ss + medicare
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# US STATE TAX — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
-
-# Build US_STATE_BRACKETS from DB: state_XX scope -> XX key
+# Build US_STATE_BRACKETS from DB
 _US_STATE_CODES = ["CA", "NY", "MA", "IL", "PA", "NJ", "MD", "DC", "GA", "TX", "WA"]
 US_STATE_BRACKETS: dict[str, list[tuple[float, float]]] = {}
 for _sc in _US_STATE_CODES:
@@ -182,6 +178,15 @@ US_STATE_DEDUCTIONS: dict[str, float] = {}
 for _sc in _US_STATE_CODES:
     _key = ("USA", f"state_{_sc}", "standard_deduction")
     US_STATE_DEDUCTIONS[_sc] = _ALL_CONFIG.get(_key, 0)
+
+
+def _us_fica(gross_usd: float) -> float:
+    """Calculate FICA taxes (Social Security + Medicare)."""
+    ss = min(gross_usd, SS_WAGE_BASE) * SS_RATE
+    medicare = gross_usd * MEDICARE_RATE
+    if gross_usd > MEDICARE_SURTAX_THRESHOLD:
+        medicare += (gross_usd - MEDICARE_SURTAX_THRESHOLD) * MEDICARE_SURTAX_RATE
+    return ss + medicare
 
 
 def _us_state_tax(gross_usd: float, state: str, city: str = None) -> float:
@@ -210,27 +215,20 @@ def _us_total_tax(gross_usd: float, state: str = "CA", city: str = None) -> floa
     return federal + state_tax + fica
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# UK TAX (2024/25) — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
-
-_UK_PERSONAL_ALLOWANCE = _cfg_usd(
-    _ALL_CONFIG, FX, "UK", "income", "personal_allowance_lc", "GBP"
-)
-_UK_PA_TAPER_START = _cfg_usd(
-    _ALL_CONFIG, FX, "UK", "income", "pa_taper_start_lc", "GBP"
-)
-
-UK_INCOME_BRACKETS = _get_brackets("UK", "income")
-UK_NI_BRACKETS = _get_brackets("UK", "national_insurance")
+# ═══════════════════════════════════════════════════════════════════════════════
+# COUNTRY TAX STRATEGIES — Data-driven tax calculation
+# Each strategy uses DB-loaded config values, not hardcoded constants
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _uk_tax(gross_usd: float) -> float:
-    """UK income tax + National Insurance."""
+def _tax_uk(gross_usd: float) -> float:
+    """UK income tax + National Insurance with PA taper."""
     # Personal allowance taper: reduced by £1 for every £2 over £100K
-    pa = _UK_PERSONAL_ALLOWANCE
-    if gross_usd > _UK_PA_TAPER_START:
-        reduction = (gross_usd - _UK_PA_TAPER_START) / 2
+    pa = _cfg_usd(_ALL_CONFIG, FX, "UK", "income", "personal_allowance_lc", "GBP")
+    taper_start = _cfg_usd(_ALL_CONFIG, FX, "UK", "income", "pa_taper_start_lc", "GBP")
+
+    if gross_usd > taper_start:
+        reduction = (gross_usd - taper_start) / 2
         pa = max(0, pa - reduction)
 
     # Income tax with adjusted PA
@@ -241,67 +239,45 @@ def _uk_tax(gross_usd: float) -> float:
         (float("inf"), 0.45),
     ]
     income_tax = _apply_brackets(gross_usd, brackets)
-    ni = _apply_brackets(gross_usd, UK_NI_BRACKETS)
+    ni = _apply_brackets(gross_usd, _get_brackets("UK", "national_insurance"))
     return income_tax + ni
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# CANADA TAX (2024 — Federal + Ontario as default province) — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
-
-CA_FEDERAL_BRACKETS = _get_brackets("Canada", "federal")
-CA_FEDERAL_PERSONAL = _cfg_usd(
-    _ALL_CONFIG, FX, "Canada", "federal", "personal_amount_lc", "CAD"
-)
-
-CA_ONTARIO_BRACKETS = _get_brackets("Canada", "provincial_ontario")
-CA_ONTARIO_PERSONAL = _cfg_usd(
-    _ALL_CONFIG, FX, "Canada", "provincial_ontario", "personal_amount_lc", "CAD"
-)
-
-# Ontario surtax thresholds (in local currency, converted at calc time)
-_CA_ON_SURTAX_T1_LC = _cfg(
-    _ALL_CONFIG, "Canada", "provincial_ontario", "surtax_threshold1_lc"
-)
-_CA_ON_SURTAX_R1 = _cfg(_ALL_CONFIG, "Canada", "provincial_ontario", "surtax_rate1")
-_CA_ON_SURTAX_T2_LC = _cfg(
-    _ALL_CONFIG, "Canada", "provincial_ontario", "surtax_threshold2_lc"
-)
-_CA_ON_SURTAX_R2 = _cfg(_ALL_CONFIG, "Canada", "provincial_ontario", "surtax_rate2")
-
-# Ontario Health Premium max
-_CA_OHP_MAX_LC = _cfg(_ALL_CONFIG, "Canada", "provincial_ontario", "ohp_max_lc")
-
-# CPP + EI
-CA_CPP_RATE = _cfg(_ALL_CONFIG, "Canada", "social", "cpp_rate")
-CA_CPP_MAX = _cfg_usd(_ALL_CONFIG, FX, "Canada", "social", "cpp_max_lc", "CAD")
-CA_EI_RATE = _cfg(_ALL_CONFIG, "Canada", "social", "ei_rate")
-CA_EI_MAX = _cfg_usd(_ALL_CONFIG, FX, "Canada", "social", "ei_max_lc", "CAD")
-
-
-def _canada_tax(gross_usd: float) -> float:
+def _tax_canada(gross_usd: float) -> float:
     """Canada federal + Ontario provincial + surtax + OHP + CPP/EI."""
-    # Federal: apply brackets to full income, then subtract 15% of PA as credit
-    federal_gross_tax = _apply_brackets(gross_usd, CA_FEDERAL_BRACKETS)
-    federal_credit = CA_FEDERAL_PERSONAL * CA_FEDERAL_BRACKETS[0][1]  # 15% rate
+    # Federal
+    federal_brackets = _get_brackets("Canada", "federal")
+    federal_pa = _cfg_usd(_ALL_CONFIG, FX, "Canada", "federal", "personal_amount_lc", "CAD")
+    federal_gross_tax = _apply_brackets(gross_usd, federal_brackets)
+    federal_credit = federal_pa * federal_brackets[0][1] if federal_brackets else 0
     federal = max(0, federal_gross_tax - federal_credit)
 
-    # Ontario: apply brackets to full income, then subtract 5.05% of PA as credit
-    provincial_gross_tax = _apply_brackets(gross_usd, CA_ONTARIO_BRACKETS)
-    provincial_credit = CA_ONTARIO_PERSONAL * CA_ONTARIO_BRACKETS[0][1]  # 5.05% rate
+    # Ontario provincial
+    provincial_brackets = _get_brackets("Canada", "provincial_ontario")
+    provincial_pa = _cfg_usd(
+        _ALL_CONFIG, FX, "Canada", "provincial_ontario", "personal_amount_lc", "CAD"
+    )
+    provincial_gross_tax = _apply_brackets(gross_usd, provincial_brackets)
+    provincial_credit = provincial_pa * provincial_brackets[0][1] if provincial_brackets else 0
     provincial_basic = max(0, provincial_gross_tax - provincial_credit)
 
-    # Ontario surtax: 20% on basic tax > $4,991 + 36% on basic tax > $6,387 (in CAD)
-    surtax_t1 = _lc_to_usd(_CA_ON_SURTAX_T1_LC, "CAD")
-    surtax_t2 = _lc_to_usd(_CA_ON_SURTAX_T2_LC, "CAD")
+    # Ontario surtax
+    surtax_t1 = _lc_to_usd(
+        _cfg(_ALL_CONFIG, "Canada", "provincial_ontario", "surtax_threshold1_lc"), "CAD"
+    )
+    surtax_r1 = _cfg(_ALL_CONFIG, "Canada", "provincial_ontario", "surtax_rate1")
+    surtax_t2 = _lc_to_usd(
+        _cfg(_ALL_CONFIG, "Canada", "provincial_ontario", "surtax_threshold2_lc"), "CAD"
+    )
+    surtax_r2 = _cfg(_ALL_CONFIG, "Canada", "provincial_ontario", "surtax_rate2")
+
     surtax = 0.0
     if provincial_basic > surtax_t1:
-        surtax += _CA_ON_SURTAX_R1 * (provincial_basic - surtax_t1)
+        surtax += surtax_r1 * (provincial_basic - surtax_t1)
     if provincial_basic > surtax_t2:
-        surtax += _CA_ON_SURTAX_R2 * (provincial_basic - surtax_t2)
+        surtax += surtax_r2 * (provincial_basic - surtax_t2)
 
-    # Ontario Health Premium (simplified: max C$900 for income > C$200K,
-    # scales from C$300 at C$20K to C$900 at higher incomes)
+    # Ontario Health Premium
     gross_cad = gross_usd * FX["CAD"]
     if gross_cad <= 20000:
         ohp = 0
@@ -317,739 +293,574 @@ def _canada_tax(gross_usd: float) -> float:
         ohp = 900
     ohp_usd = ohp / FX["CAD"]
 
-    cpp = min(gross_usd * CA_CPP_RATE, CA_CPP_MAX)
-    ei = min(gross_usd * CA_EI_RATE, CA_EI_MAX)
+    # CPP + EI
+    cpp_rate = _cfg(_ALL_CONFIG, "Canada", "social", "cpp_rate")
+    cpp_max = _cfg_usd(_ALL_CONFIG, FX, "Canada", "social", "cpp_max_lc", "CAD")
+    ei_rate = _cfg(_ALL_CONFIG, "Canada", "social", "ei_rate")
+    ei_max = _cfg_usd(_ALL_CONFIG, FX, "Canada", "social", "ei_max_lc", "CAD")
+
+    cpp = min(gross_usd * cpp_rate, cpp_max)
+    ei = min(gross_usd * ei_rate, ei_max)
 
     return federal + provincial_basic + surtax + ohp_usd + cpp + ei
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# GERMANY TAX (2024) — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
-
-DE_BRACKETS = _get_brackets("Germany", "income")
-
-DE_SOCIAL_RATE = _cfg(_ALL_CONFIG, "Germany", "social", "rate")
-DE_SOCIAL_CAP = _cfg_usd(_ALL_CONFIG, FX, "Germany", "social", "cap_lc", "EUR")
-_DE_SOLI_THRESHOLD_LC = _cfg(_ALL_CONFIG, "Germany", "income", "soli_threshold_lc")
-_DE_SOLI_RATE = _cfg(_ALL_CONFIG, "Germany", "income", "soli_rate")
-
-
-def _germany_tax(gross_usd: float) -> float:
+def _tax_germany(gross_usd: float) -> float:
     """Germany income tax + Soli + social contributions."""
-    income_tax = _apply_brackets(gross_usd, DE_BRACKETS)
-    # Solidaritätszuschlag: 5.5% of income tax (only if tax > €18,130 ~ $19.7K)
-    soli_threshold = _lc_to_usd(_DE_SOLI_THRESHOLD_LC, "EUR")
-    soli = income_tax * _DE_SOLI_RATE if income_tax > soli_threshold else 0
-    social = min(gross_usd, DE_SOCIAL_CAP) * DE_SOCIAL_RATE
+    brackets = _get_brackets("Germany", "income")
+    income_tax = _apply_brackets(gross_usd, brackets)
+
+    # Solidaritätszuschlag
+    soli_threshold = _lc_to_usd(_cfg(_ALL_CONFIG, "Germany", "income", "soli_threshold_lc"), "EUR")
+    soli_rate = _cfg(_ALL_CONFIG, "Germany", "income", "soli_rate")
+    soli = income_tax * soli_rate if income_tax > soli_threshold else 0
+
+    # Social
+    social_rate = _cfg(_ALL_CONFIG, "Germany", "social", "rate")
+    social_cap = _cfg_usd(_ALL_CONFIG, FX, "Germany", "social", "cap_lc", "EUR")
+    social = min(gross_usd, social_cap) * social_rate
+
     return income_tax + soli + social
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# SWITZERLAND TAX (2024 — Federal + Zurich cantonal) — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
-
-CH_FEDERAL_BRACKETS = _get_brackets("Switzerland", "federal")
-
-CH_CANTONAL_EFFECTIVE = _cfg(_ALL_CONFIG, "Switzerland", "cantonal", "effective_rate")
-CH_SOCIAL_RATE = _cfg(_ALL_CONFIG, "Switzerland", "social", "rate")
-CH_SOCIAL_CAP = _cfg_usd(_ALL_CONFIG, FX, "Switzerland", "social", "cap_lc", "CHF")
-
-
-def _switzerland_tax(gross_usd: float) -> float:
+def _tax_switzerland(gross_usd: float) -> float:
     """Switzerland federal + cantonal + social contributions."""
-    federal = _apply_brackets(gross_usd, CH_FEDERAL_BRACKETS)
-    cantonal = gross_usd * CH_CANTONAL_EFFECTIVE
-    social = min(gross_usd, CH_SOCIAL_CAP) * CH_SOCIAL_RATE
+    brackets = _get_brackets("Switzerland", "federal")
+    federal = _apply_brackets(gross_usd, brackets)
+
+    cantonal_rate = _cfg(_ALL_CONFIG, "Switzerland", "cantonal", "effective_rate")
+    cantonal = gross_usd * cantonal_rate
+
+    social_rate = _cfg(_ALL_CONFIG, "Switzerland", "social", "rate")
+    social_cap = _cfg_usd(_ALL_CONFIG, FX, "Switzerland", "social", "cap_lc", "CHF")
+    social = min(gross_usd, social_cap) * social_rate
+
     return federal + cantonal + social
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# FRANCE TAX (2024) — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
-
-FR_BRACKETS = _get_brackets("France", "income")
-
-_FR_PROFESSIONAL_DEDUCTION_RATE = _cfg(
-    _ALL_CONFIG, "France", "income", "professional_deduction_rate"
-)
-FR_SOCIAL_RATE = _cfg(_ALL_CONFIG, "France", "social", "rate")
-
-
-def _france_tax(gross_usd: float) -> float:
+def _tax_france(gross_usd: float) -> float:
     """France income tax + social contributions."""
-    # France applies 10% deduction for professional expenses
-    taxable = gross_usd * (1 - _FR_PROFESSIONAL_DEDUCTION_RATE)
-    income_tax = _apply_brackets(taxable, FR_BRACKETS)
-    social = gross_usd * FR_SOCIAL_RATE
+    deduction_rate = _cfg(_ALL_CONFIG, "France", "income", "professional_deduction_rate")
+    taxable = gross_usd * (1 - deduction_rate)
+
+    brackets = _get_brackets("France", "income")
+    income_tax = _apply_brackets(taxable, brackets)
+
+    social_rate = _cfg(_ALL_CONFIG, "France", "social", "rate")
+    social = gross_usd * social_rate
+
     return income_tax + social
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# NETHERLANDS TAX (2024) — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
-
-NL_BRACKETS = _get_brackets("Netherlands", "income")
-
-
-def _netherlands_tax(gross_usd: float) -> float:
-    """Netherlands income tax (includes social contributions in Box 1 rate)."""
-    return _apply_brackets(gross_usd, NL_BRACKETS)
+def _tax_netherlands(gross_usd: float) -> float:
+    """Netherlands income tax (Box 1 includes social)."""
+    brackets = _get_brackets("Netherlands", "income")
+    return _apply_brackets(gross_usd, brackets)
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# INDIA TAX (2024-25 New Tax Regime) — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
-
-IN_BRACKETS = _get_brackets("India", "income")
-
-_IN_CESS_RATE = _cfg(_ALL_CONFIG, "India", "income", "cess_rate")
-IN_EPF_RATE = _cfg(_ALL_CONFIG, "India", "social", "epf_rate")
-
-
-def _india_tax(gross_usd: float) -> float:
+def _tax_india(gross_usd: float) -> float:
     """India income tax (new regime) + EPF."""
-    income_tax = _apply_brackets(gross_usd, IN_BRACKETS)
-    # 4% health & education cess on income tax
-    cess = income_tax * _IN_CESS_RATE
-    epf = gross_usd * IN_EPF_RATE
+    brackets = _get_brackets("India", "income")
+    income_tax = _apply_brackets(gross_usd, brackets)
+
+    cess_rate = _cfg(_ALL_CONFIG, "India", "income", "cess_rate")
+    cess = income_tax * cess_rate
+
+    epf_rate = _cfg(_ALL_CONFIG, "India", "social", "epf_rate")
+    epf = gross_usd * epf_rate
+
     return income_tax + cess + epf
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# AUSTRALIA TAX (2024-25) — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
-
-AU_BRACKETS = _get_brackets("Australia", "income")
-
-AU_MEDICARE = _cfg(_ALL_CONFIG, "Australia", "social", "medicare_rate")
-
-
-def _australia_tax(gross_usd: float) -> float:
+def _tax_australia(gross_usd: float) -> float:
     """Australia income tax + Medicare levy."""
-    income_tax = _apply_brackets(gross_usd, AU_BRACKETS)
-    medicare = gross_usd * AU_MEDICARE
+    brackets = _get_brackets("Australia", "income")
+    income_tax = _apply_brackets(gross_usd, brackets)
+
+    medicare_rate = _cfg(_ALL_CONFIG, "Australia", "social", "medicare_rate")
+    medicare = gross_usd * medicare_rate
+
     return income_tax + medicare
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# SINGAPORE TAX (2024) — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
-
-SG_BRACKETS = _get_brackets("Singapore", "income")
-
-SG_CPF_RATE = _cfg(_ALL_CONFIG, "Singapore", "social", "cpf_rate")
-SG_CPF_CAP = (
-    _cfg_usd(_ALL_CONFIG, FX, "Singapore", "social", "cpf_cap_monthly_lc", "SGD") * 12
-)
-
-
-def _singapore_tax(gross_usd: float) -> float:
+def _tax_singapore(gross_usd: float) -> float:
     """Singapore income tax + CPF."""
-    income_tax = _apply_brackets(gross_usd, SG_BRACKETS)
-    cpf = min(gross_usd, SG_CPF_CAP) * SG_CPF_RATE
+    brackets = _get_brackets("Singapore", "income")
+    income_tax = _apply_brackets(gross_usd, brackets)
+
+    cpf_rate = _cfg(_ALL_CONFIG, "Singapore", "social", "cpf_rate")
+    cpf_cap = _cfg_usd(_ALL_CONFIG, FX, "Singapore", "social", "cpf_cap_monthly_lc", "SGD") * 12
+    cpf = min(gross_usd, cpf_cap) * cpf_rate
+
     return income_tax + cpf
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# HONG KONG TAX (2024-25) — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
-
-HK_BRACKETS = _get_brackets("Hong Kong", "income")
-
-HK_PERSONAL_ALLOWANCE = _cfg_usd(
-    _ALL_CONFIG, FX, "Hong Kong", "income", "personal_allowance_lc", "HKD"
-)
-HK_STANDARD_RATE = _cfg(_ALL_CONFIG, "Hong Kong", "income", "standard_rate")
-HK_MPF_RATE = _cfg(_ALL_CONFIG, "Hong Kong", "social", "mpf_rate")
-HK_MPF_CAP = (
-    _cfg_usd(_ALL_CONFIG, FX, "Hong Kong", "social", "mpf_cap_monthly_lc", "HKD") * 12
-)
-
-
-def _hong_kong_tax(gross_usd: float) -> float:
+def _tax_hong_kong(gross_usd: float) -> float:
     """Hong Kong salaries tax + MPF."""
-    # Progressive tax on income after allowance
-    taxable = max(0, gross_usd - HK_PERSONAL_ALLOWANCE)
-    progressive = _apply_brackets(taxable, HK_BRACKETS)
-    # Standard rate cap
-    standard = gross_usd * HK_STANDARD_RATE
+    pa = _cfg_usd(_ALL_CONFIG, FX, "Hong Kong", "income", "personal_allowance_lc", "HKD")
+    taxable = max(0, gross_usd - pa)
+
+    brackets = _get_brackets("Hong Kong", "income")
+    progressive = _apply_brackets(taxable, brackets)
+
+    standard_rate = _cfg(_ALL_CONFIG, "Hong Kong", "income", "standard_rate")
+    standard = gross_usd * standard_rate
+
     income_tax = min(progressive, standard)
-    mpf = min(gross_usd, HK_MPF_CAP) * HK_MPF_RATE
+
+    mpf_rate = _cfg(_ALL_CONFIG, "Hong Kong", "social", "mpf_rate")
+    mpf_cap = _cfg_usd(_ALL_CONFIG, FX, "Hong Kong", "social", "mpf_cap_monthly_lc", "HKD") * 12
+    mpf = min(gross_usd, mpf_cap) * mpf_rate
+
     return income_tax + mpf
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# JAPAN TAX (2024) — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
-
-JP_BRACKETS = _get_brackets("Japan", "income")
-
-JP_RESIDENT_TAX = _cfg(_ALL_CONFIG, "Japan", "income", "resident_tax_rate")
-_JP_RECONSTRUCTION_SURTAX = _cfg(
-    _ALL_CONFIG, "Japan", "income", "reconstruction_surtax_rate"
-)
-_JP_EMP_DEDUCTION_LOW_LC = _cfg(
-    _ALL_CONFIG, "Japan", "income", "employment_deduction_low_lc"
-)
-_JP_EMP_DEDUCTION_MID_ADD_LC = _cfg(
-    _ALL_CONFIG, "Japan", "income", "employment_deduction_mid_add_lc"
-)
-_JP_EMP_DEDUCTION_MID_RATE = _cfg(
-    _ALL_CONFIG, "Japan", "income", "employment_deduction_mid_rate"
-)
-_JP_EMP_DEDUCTION_HIGH_LC = _cfg(
-    _ALL_CONFIG, "Japan", "income", "employment_deduction_high_lc"
-)
-_JP_EMP_DEDUCTION_LOW_THRESHOLD_LC = _cfg(
-    _ALL_CONFIG, "Japan", "income", "employment_deduction_low_threshold_lc"
-)
-_JP_EMP_DEDUCTION_HIGH_THRESHOLD_LC = _cfg(
-    _ALL_CONFIG, "Japan", "income", "employment_deduction_high_threshold_lc"
-)
-JP_SOCIAL_RATE = _cfg(_ALL_CONFIG, "Japan", "social", "rate")
-JP_SOCIAL_CAP = (
-    _cfg_usd(_ALL_CONFIG, FX, "Japan", "social", "cap_monthly_lc", "JPY") * 12
-)
-JP_BASIC_EXEMPTION_LC = _cfg(_ALL_CONFIG, "Japan", "income", "basic_exemption_lc")
-
-
-def _japan_tax(gross_usd: float) -> float:
+def _tax_japan(gross_usd: float) -> float:
     """Japan income tax + resident tax + social insurance."""
-    # 1. Social insurance (employee share: pension ~9.15%, health ~5%, emp ins ~0.3%)
-    social = min(gross_usd, JP_SOCIAL_CAP) * JP_SOCIAL_RATE
+    # Social insurance
+    social_rate = _cfg(_ALL_CONFIG, "Japan", "social", "rate")
+    social_cap = _cfg_usd(_ALL_CONFIG, FX, "Japan", "social", "cap_monthly_lc", "JPY") * 12
+    social = min(gross_usd, social_cap) * social_rate
 
-    # 2. Employment income deduction (simplified 3-tier formula)
-    if gross_usd < _lc_to_usd(_JP_EMP_DEDUCTION_LOW_THRESHOLD_LC, "JPY"):
-        emp_deduction = _lc_to_usd(_JP_EMP_DEDUCTION_LOW_LC, "JPY")
-    elif gross_usd < _lc_to_usd(_JP_EMP_DEDUCTION_HIGH_THRESHOLD_LC, "JPY"):
-        emp_deduction = gross_usd * _JP_EMP_DEDUCTION_MID_RATE + _lc_to_usd(
-            _JP_EMP_DEDUCTION_MID_ADD_LC, "JPY"
+    # Employment income deduction (3-tier formula)
+    emp_low_threshold = _lc_to_usd(
+        _cfg(_ALL_CONFIG, "Japan", "income", "employment_deduction_low_threshold_lc"), "JPY"
+    )
+    emp_high_threshold = _lc_to_usd(
+        _cfg(_ALL_CONFIG, "Japan", "income", "employment_deduction_high_threshold_lc"), "JPY"
+    )
+
+    if gross_usd < emp_low_threshold:
+        emp_deduction = _lc_to_usd(
+            _cfg(_ALL_CONFIG, "Japan", "income", "employment_deduction_low_lc"), "JPY"
+        )
+    elif gross_usd < emp_high_threshold:
+        emp_deduction = gross_usd * _cfg(
+            _ALL_CONFIG, "Japan", "income", "employment_deduction_mid_rate"
+        ) + _lc_to_usd(
+            _cfg(_ALL_CONFIG, "Japan", "income", "employment_deduction_mid_add_lc"), "JPY"
         )
     else:
-        emp_deduction = _lc_to_usd(_JP_EMP_DEDUCTION_HIGH_LC, "JPY")
+        emp_deduction = _lc_to_usd(
+            _cfg(_ALL_CONFIG, "Japan", "income", "employment_deduction_high_lc"), "JPY"
+        )
 
-    # 3. Taxable income = gross - emp deduction - social - basic exemption (¥480K)
-    basic_exemption = _lc_to_usd(JP_BASIC_EXEMPTION_LC, "JPY")
+    # Basic exemption
+    basic_exemption = _lc_to_usd(_cfg(_ALL_CONFIG, "Japan", "income", "basic_exemption_lc"), "JPY")
+
+    # Taxable income
     taxable = max(0, gross_usd - emp_deduction - social - basic_exemption)
 
-    # 4. National income tax + reconstruction surtax 2.1%
-    income_tax = _apply_brackets(taxable, JP_BRACKETS)
-    income_tax *= 1 + _JP_RECONSTRUCTION_SURTAX
+    # National income tax + reconstruction surtax
+    brackets = _get_brackets("Japan", "income")
+    income_tax = _apply_brackets(taxable, brackets)
+    reconstruction_rate = _cfg(_ALL_CONFIG, "Japan", "income", "reconstruction_surtax_rate")
+    income_tax *= 1 + reconstruction_rate
 
-    # 5. Resident tax (municipal + prefectural) ~10% on same taxable base
-    resident = taxable * JP_RESIDENT_TAX
+    # Resident tax
+    resident_rate = _cfg(_ALL_CONFIG, "Japan", "income", "resident_tax_rate")
+    resident = taxable * resident_rate
 
     return income_tax + resident + social
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# SOUTH KOREA TAX (2024) — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
-
-KR_BRACKETS = _get_brackets("South Korea", "income")
-
-_KR_LOCAL_TAX_RATE = _cfg(_ALL_CONFIG, "South Korea", "income", "local_tax_rate")
-KR_SOCIAL_RATE = _cfg(_ALL_CONFIG, "South Korea", "social", "rate")
-KR_SOCIAL_CAP = (
-    _cfg_usd(_ALL_CONFIG, FX, "South Korea", "social", "cap_monthly_lc", "KRW") * 12
-)
-
-
-def _south_korea_tax(gross_usd: float) -> float:
+def _tax_south_korea(gross_usd: float) -> float:
     """South Korea income + local + social."""
-    income_tax = _apply_brackets(gross_usd, KR_BRACKETS)
-    local_tax = income_tax * _KR_LOCAL_TAX_RATE
-    social = min(gross_usd, KR_SOCIAL_CAP) * KR_SOCIAL_RATE
+    brackets = _get_brackets("South Korea", "income")
+    income_tax = _apply_brackets(gross_usd, brackets)
+
+    local_rate = _cfg(_ALL_CONFIG, "South Korea", "income", "local_tax_rate")
+    local_tax = income_tax * local_rate
+
+    social_rate = _cfg(_ALL_CONFIG, "South Korea", "social", "rate")
+    social_cap = _cfg_usd(_ALL_CONFIG, FX, "South Korea", "social", "cap_monthly_lc", "KRW") * 12
+    social = min(gross_usd, social_cap) * social_rate
+
     return income_tax + local_tax + social
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# ISRAEL TAX (2024) — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
-
-IL_BRACKETS = _get_brackets("Israel", "income")
-
-IL_SOCIAL_RATE = _cfg(_ALL_CONFIG, "Israel", "social", "rate")
-
-
-def _israel_tax(gross_usd: float) -> float:
+def _tax_israel(gross_usd: float) -> float:
     """Israel income tax + National Insurance + Health."""
-    income_tax = _apply_brackets(gross_usd, IL_BRACKETS)
-    social = gross_usd * IL_SOCIAL_RATE
+    brackets = _get_brackets("Israel", "income")
+    income_tax = _apply_brackets(gross_usd, brackets)
+
+    social_rate = _cfg(_ALL_CONFIG, "Israel", "social", "rate")
+    social = gross_usd * social_rate
+
     return income_tax + social
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# CHINA TAX (2024) — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
-
-CN_BRACKETS = _get_brackets("China", "income")
-
-CN_STANDARD_DEDUCTION = _cfg_usd(
-    _ALL_CONFIG, FX, "China", "income", "standard_deduction_lc", "CNY"
-)
-CN_SOCIAL_RATE = _cfg(_ALL_CONFIG, "China", "social", "rate")
-CN_SOCIAL_CAP = _cfg_usd(_ALL_CONFIG, FX, "China", "social", "cap_lc", "CNY")
-
-
-def _china_tax(gross_usd: float) -> float:
+def _tax_china(gross_usd: float) -> float:
     """China IIT + social insurance."""
-    social = min(gross_usd, CN_SOCIAL_CAP) * CN_SOCIAL_RATE
-    taxable = max(0, gross_usd - CN_STANDARD_DEDUCTION - social)
-    income_tax = _apply_brackets(taxable, CN_BRACKETS)
+    social_rate = _cfg(_ALL_CONFIG, "China", "social", "rate")
+    social_cap = _cfg_usd(_ALL_CONFIG, FX, "China", "social", "cap_lc", "CNY")
+    social = min(gross_usd, social_cap) * social_rate
+
+    deduction = _cfg_usd(_ALL_CONFIG, FX, "China", "income", "standard_deduction_lc", "CNY")
+    taxable = max(0, gross_usd - deduction - social)
+
+    brackets = _get_brackets("China", "income")
+    income_tax = _apply_brackets(taxable, brackets)
+
     return income_tax + social
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# SCANDINAVIAN COUNTRIES — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
-
-# Sweden config
-_SE_MUNICIPAL_RATE = _cfg(_ALL_CONFIG, "Sweden", "income", "municipal_rate")
-_SE_STATE_THRESHOLD_LC = _cfg(_ALL_CONFIG, "Sweden", "income", "state_threshold_lc")
-_SE_STATE_RATE = _cfg(_ALL_CONFIG, "Sweden", "income", "state_rate")
-_SE_PENSION_RATE = _cfg(_ALL_CONFIG, "Sweden", "social", "pension_rate")
-_SE_PENSION_CAP_LC = _cfg(_ALL_CONFIG, "Sweden", "social", "pension_cap_lc")
-
-
-def _sweden_tax(gross_usd: float) -> float:
-    municipal_rate = _SE_MUNICIPAL_RATE
-    state_threshold = _lc_to_usd(_SE_STATE_THRESHOLD_LC, "SEK")
-    state_rate = _SE_STATE_RATE
-
+def _tax_sweden(gross_usd: float) -> float:
+    """Sweden municipal + state + pension."""
+    municipal_rate = _cfg(_ALL_CONFIG, "Sweden", "income", "municipal_rate")
     tax = gross_usd * municipal_rate
+
+    state_threshold = _lc_to_usd(_cfg(_ALL_CONFIG, "Sweden", "income", "state_threshold_lc"), "SEK")
+    state_rate = _cfg(_ALL_CONFIG, "Sweden", "income", "state_rate")
     if gross_usd > state_threshold:
         tax += (gross_usd - state_threshold) * state_rate
-    # Social: employee pension ~7% (capped)
-    social = min(gross_usd, _lc_to_usd(_SE_PENSION_CAP_LC, "SEK")) * _SE_PENSION_RATE
+
+    pension_rate = _cfg(_ALL_CONFIG, "Sweden", "social", "pension_rate")
+    pension_cap = _lc_to_usd(_cfg(_ALL_CONFIG, "Sweden", "social", "pension_cap_lc"), "SEK")
+    social = min(gross_usd, pension_cap) * pension_rate
+
     return tax + social
 
 
-# Denmark config
-_DK_AM_BIDRAG_RATE = _cfg(_ALL_CONFIG, "Denmark", "income", "am_bidrag_rate")
-_DK_PERSONAL_ALLOWANCE_LC = _cfg(
-    _ALL_CONFIG, "Denmark", "income", "personal_allowance_lc"
-)
-_DK_MUNICIPAL_RATE = _cfg(_ALL_CONFIG, "Denmark", "income", "municipal_rate")
-_DK_STATE_BOTTOM_RATE = _cfg(_ALL_CONFIG, "Denmark", "income", "state_bottom_rate")
-_DK_TOP_THRESHOLD_LC = _cfg(_ALL_CONFIG, "Denmark", "income", "top_threshold_lc")
-_DK_TOP_RATE = _cfg(_ALL_CONFIG, "Denmark", "income", "top_rate")
-_DK_TAX_CEILING = _cfg(_ALL_CONFIG, "Denmark", "income", "tax_ceiling")
-_DK_ATP_ANNUAL_LC = _cfg(_ALL_CONFIG, "Denmark", "social", "atp_annual_lc")
-
-
-def _denmark_tax(gross_usd: float) -> float:
-    # AM-bidrag (labor market contribution): 8%
-    am = gross_usd * _DK_AM_BIDRAG_RATE
+def _tax_denmark(gross_usd: float) -> float:
+    """Denmark AM-bidrag + municipal + state + ATP."""
+    am_rate = _cfg(_ALL_CONFIG, "Denmark", "income", "am_bidrag_rate")
+    am = gross_usd * am_rate
     taxable = gross_usd - am
-    personal_allowance = _lc_to_usd(_DK_PERSONAL_ALLOWANCE_LC, "DKK")
-    taxable = max(0, taxable - personal_allowance)
-    # Municipal + church + health: ~25%
-    # State: bottom bracket 12.09%, top bracket 15% above DKK 588,900
-    municipal = taxable * _DK_MUNICIPAL_RATE
-    state_bottom = taxable * _DK_STATE_BOTTOM_RATE
-    top_threshold = _lc_to_usd(_DK_TOP_THRESHOLD_LC, "DKK")
-    state_top = max(0, taxable - top_threshold) * _DK_TOP_RATE
-    # Tax ceiling ~52.07% (effective cap)
-    income_tax = min(municipal + state_bottom + state_top, taxable * _DK_TAX_CEILING)
-    # ATP (labor market pension): ~DKK 3,408/yr
-    atp = _lc_to_usd(_DK_ATP_ANNUAL_LC, "DKK")
+
+    pa = _lc_to_usd(_cfg(_ALL_CONFIG, "Denmark", "income", "personal_allowance_lc"), "DKK")
+    taxable = max(0, taxable - pa)
+
+    municipal_rate = _cfg(_ALL_CONFIG, "Denmark", "income", "municipal_rate")
+    municipal = taxable * municipal_rate
+
+    state_bottom_rate = _cfg(_ALL_CONFIG, "Denmark", "income", "state_bottom_rate")
+    state_bottom = taxable * state_bottom_rate
+
+    top_threshold = _lc_to_usd(_cfg(_ALL_CONFIG, "Denmark", "income", "top_threshold_lc"), "DKK")
+    top_rate = _cfg(_ALL_CONFIG, "Denmark", "income", "top_rate")
+    state_top = max(0, taxable - top_threshold) * top_rate
+
+    tax_ceiling = _cfg(_ALL_CONFIG, "Denmark", "income", "tax_ceiling")
+    income_tax = min(municipal + state_bottom + state_top, taxable * tax_ceiling)
+
+    atp = _lc_to_usd(_cfg(_ALL_CONFIG, "Denmark", "social", "atp_annual_lc"), "DKK")
+
     return am + income_tax + atp
 
 
-# Norway config
-_NO_FLAT_RATE = _cfg(_ALL_CONFIG, "Norway", "income", "flat_rate")
-_NO_PERSONAL_ALLOWANCE_LC = _cfg(
-    _ALL_CONFIG, "Norway", "income", "personal_allowance_lc"
-)
-_NO_SOCIAL_RATE = _cfg(_ALL_CONFIG, "Norway", "social", "rate")
+def _tax_norway(gross_usd: float) -> float:
+    """Norway trinnskatt + flat + social."""
+    trinnskatt_brackets = _get_brackets("Norway", "trinnskatt")
+    trinnskatt = _apply_brackets(gross_usd, trinnskatt_brackets)
 
-# Norway trinnskatt brackets from DB
-_NO_TRINNSKATT_BRACKETS = _get_brackets("Norway", "trinnskatt")
+    pa = _lc_to_usd(_cfg(_ALL_CONFIG, "Norway", "income", "personal_allowance_lc"), "NOK")
+    taxable = max(0, gross_usd - pa)
 
+    flat_rate = _cfg(_ALL_CONFIG, "Norway", "income", "flat_rate")
+    flat_tax = taxable * flat_rate
 
-def _norway_tax(gross_usd: float) -> float:
-    # Bracket tax (trinnskatt)
-    trinnskatt = _apply_brackets(gross_usd, _NO_TRINNSKATT_BRACKETS)
-    # Flat tax on ordinary income: 22%
-    personal_allowance = _lc_to_usd(_NO_PERSONAL_ALLOWANCE_LC, "NOK")
-    taxable = max(0, gross_usd - personal_allowance)
-    flat_tax = taxable * _NO_FLAT_RATE
-    # Social: employee ~7.9%
-    social = gross_usd * _NO_SOCIAL_RATE
+    social_rate = _cfg(_ALL_CONFIG, "Norway", "social", "rate")
+    social = gross_usd * social_rate
+
     return trinnskatt + flat_tax + social
 
 
-# Finland config
-_FI_BRACKETS = _get_brackets("Finland", "income")
-_FI_MUNICIPAL_RATE = _cfg(_ALL_CONFIG, "Finland", "income", "municipal_rate")
-_FI_SOCIAL_RATE = _cfg(_ALL_CONFIG, "Finland", "social", "rate")
+def _tax_finland(gross_usd: float) -> float:
+    """Finland state + municipal + social."""
+    brackets = _get_brackets("Finland", "income")
+    state_tax = _apply_brackets(gross_usd, brackets)
 
+    municipal_rate = _cfg(_ALL_CONFIG, "Finland", "income", "municipal_rate")
+    municipal = gross_usd * municipal_rate
 
-def _finland_tax(gross_usd: float) -> float:
-    state_tax = _apply_brackets(gross_usd, _FI_BRACKETS)
-    # Municipal tax: ~20% (average)
-    municipal = gross_usd * _FI_MUNICIPAL_RATE
-    # Social: pension ~7.15% + unemployment ~1.5% + health ~1.96% = ~10.6%
-    social = gross_usd * _FI_SOCIAL_RATE
+    social_rate = _cfg(_ALL_CONFIG, "Finland", "social", "rate")
+    social = gross_usd * social_rate
+
     return state_tax + municipal + social
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# BELGIUM TAX (2024) — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
+def _tax_belgium(gross_usd: float) -> float:
+    """Belgium income tax + municipal surcharge + social."""
+    pa = _lc_to_usd(_cfg(_ALL_CONFIG, "Belgium", "income", "personal_allowance_lc"), "EUR")
+    taxable = max(0, gross_usd - pa)
 
-_BE_BRACKETS = _get_brackets("Belgium", "income")
-_BE_PERSONAL_ALLOWANCE_LC = _cfg(
-    _ALL_CONFIG, "Belgium", "income", "personal_allowance_lc"
-)
-_BE_MUNICIPAL_SURCHARGE_RATE = _cfg(
-    _ALL_CONFIG, "Belgium", "income", "municipal_surcharge_rate"
-)
-_BE_SOCIAL_RATE = _cfg(_ALL_CONFIG, "Belgium", "social", "rate")
+    brackets = _get_brackets("Belgium", "income")
+    income_tax = _apply_brackets(taxable, brackets)
 
+    surcharge_rate = _cfg(_ALL_CONFIG, "Belgium", "income", "municipal_surcharge_rate")
+    municipal = income_tax * surcharge_rate
 
-def _belgium_tax(gross_usd: float) -> float:
-    personal_allowance = _lc_to_usd(_BE_PERSONAL_ALLOWANCE_LC, "EUR")
-    taxable = max(0, gross_usd - personal_allowance)
-    income_tax = _apply_brackets(taxable, _BE_BRACKETS)
-    # Municipal surcharge: ~7% of income tax
-    municipal = income_tax * _BE_MUNICIPAL_SURCHARGE_RATE
-    # Social: ~13.07% of gross
-    social = gross_usd * _BE_SOCIAL_RATE
+    social_rate = _cfg(_ALL_CONFIG, "Belgium", "social", "rate")
+    social = gross_usd * social_rate
+
     return income_tax + municipal + social
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# AUSTRIA TAX (2024) — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
+def _tax_austria(gross_usd: float) -> float:
+    """Austria income tax + social."""
+    brackets = _get_brackets("Austria", "income")
+    income_tax = _apply_brackets(gross_usd, brackets)
 
-_AT_BRACKETS = _get_brackets("Austria", "income")
-_AT_SOCIAL_RATE = _cfg(_ALL_CONFIG, "Austria", "social", "rate")
-_AT_SOCIAL_CAP_LC = _cfg(_ALL_CONFIG, "Austria", "social", "cap_lc")
+    social_rate = _cfg(_ALL_CONFIG, "Austria", "social", "rate")
+    social_cap = _lc_to_usd(_cfg(_ALL_CONFIG, "Austria", "social", "cap_lc"), "EUR")
+    social = min(gross_usd, social_cap) * social_rate
 
-
-def _austria_tax(gross_usd: float) -> float:
-    income_tax = _apply_brackets(gross_usd, _AT_BRACKETS)
-    # Social: ~18.12% (pension 10.25% + health 3.87% + unemployment 3% + other 1%)
-    social = min(gross_usd, _lc_to_usd(_AT_SOCIAL_CAP_LC, "EUR")) * _AT_SOCIAL_RATE
     return income_tax + social
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# ITALY TAX (2024) — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
+def _tax_italy(gross_usd: float) -> float:
+    """Italy income tax + surcharge + social."""
+    brackets = _get_brackets("Italy", "income")
+    income_tax = _apply_brackets(gross_usd, brackets)
 
-_IT_BRACKETS = _get_brackets("Italy", "income")
-_IT_SURCHARGE_RATE = _cfg(_ALL_CONFIG, "Italy", "income", "surcharge_rate")
-_IT_SOCIAL_RATE = _cfg(_ALL_CONFIG, "Italy", "social", "rate")
+    surcharge_rate = _cfg(_ALL_CONFIG, "Italy", "income", "surcharge_rate")
+    surcharge = gross_usd * surcharge_rate
 
+    social_rate = _cfg(_ALL_CONFIG, "Italy", "social", "rate")
+    social = gross_usd * social_rate
 
-def _italy_tax(gross_usd: float) -> float:
-    income_tax = _apply_brackets(gross_usd, _IT_BRACKETS)
-    # Regional + municipal surcharge: ~2-3%
-    surcharge = gross_usd * _IT_SURCHARGE_RATE
-    # Social: ~9.19% employee
-    social = gross_usd * _IT_SOCIAL_RATE
     return income_tax + surcharge + social
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# SPAIN TAX (2024) — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
+def _tax_spain(gross_usd: float) -> float:
+    """Spain income tax + social."""
+    pa = _lc_to_usd(_cfg(_ALL_CONFIG, "Spain", "income", "personal_allowance_lc"), "EUR")
+    taxable = max(0, gross_usd - pa)
 
-_ES_BRACKETS = _get_brackets("Spain", "income")
-_ES_PERSONAL_ALLOWANCE_LC = _cfg(
-    _ALL_CONFIG, "Spain", "income", "personal_allowance_lc"
-)
-_ES_SOCIAL_RATE = _cfg(_ALL_CONFIG, "Spain", "social", "rate")
-_ES_SOCIAL_CAP_LC = _cfg(_ALL_CONFIG, "Spain", "social", "cap_lc")
+    brackets = _get_brackets("Spain", "income")
+    income_tax = _apply_brackets(taxable, brackets)
 
+    social_rate = _cfg(_ALL_CONFIG, "Spain", "social", "rate")
+    social_cap = _lc_to_usd(_cfg(_ALL_CONFIG, "Spain", "social", "cap_lc"), "EUR")
+    social = min(gross_usd, social_cap) * social_rate
 
-def _spain_tax(gross_usd: float) -> float:
-    personal_allowance = _lc_to_usd(_ES_PERSONAL_ALLOWANCE_LC, "EUR")
-    taxable = max(0, gross_usd - personal_allowance)
-    income_tax = _apply_brackets(taxable, _ES_BRACKETS)
-    # Social: ~6.35% employee
-    social = min(gross_usd, _lc_to_usd(_ES_SOCIAL_CAP_LC, "EUR")) * _ES_SOCIAL_RATE
     return income_tax + social
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# PORTUGAL TAX (2024) — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
+def _tax_portugal(gross_usd: float) -> float:
+    """Portugal income tax + social."""
+    brackets = _get_brackets("Portugal", "income")
+    income_tax = _apply_brackets(gross_usd, brackets)
 
-_PT_BRACKETS = _get_brackets("Portugal", "income")
-_PT_SOCIAL_RATE = _cfg(_ALL_CONFIG, "Portugal", "social", "rate")
+    social_rate = _cfg(_ALL_CONFIG, "Portugal", "social", "rate")
+    social = gross_usd * social_rate
 
-
-def _portugal_tax(gross_usd: float) -> float:
-    income_tax = _apply_brackets(gross_usd, _PT_BRACKETS)
-    # Social: 11% employee
-    social = gross_usd * _PT_SOCIAL_RATE
     return income_tax + social
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# EASTERN EUROPE — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
+def _tax_poland(gross_usd: float) -> float:
+    """Poland income tax + social + health."""
+    pa = _lc_to_usd(_cfg(_ALL_CONFIG, "Poland", "income", "personal_allowance_lc"), "PLN")
+    taxable = max(0, gross_usd - pa)
 
-# Poland
-_PL_BRACKETS = _get_brackets("Poland", "income")
-_PL_PERSONAL_ALLOWANCE_LC = _cfg(
-    _ALL_CONFIG, "Poland", "income", "personal_allowance_lc"
-)
-_PL_SOCIAL_RATE = _cfg(_ALL_CONFIG, "Poland", "social", "rate")
-_PL_SOCIAL_CAP_LC = _cfg(_ALL_CONFIG, "Poland", "social", "cap_lc")
-_PL_HEALTH_RATE = _cfg(_ALL_CONFIG, "Poland", "social", "health_rate")
+    brackets = _get_brackets("Poland", "income")
+    income_tax = _apply_brackets(taxable, brackets)
 
+    social_rate = _cfg(_ALL_CONFIG, "Poland", "social", "rate")
+    social_cap = _lc_to_usd(_cfg(_ALL_CONFIG, "Poland", "social", "cap_lc"), "PLN")
+    social = min(gross_usd, social_cap) * social_rate
 
-def _poland_tax(gross_usd: float) -> float:
-    personal_allowance = _lc_to_usd(_PL_PERSONAL_ALLOWANCE_LC, "PLN")
-    taxable = max(0, gross_usd - personal_allowance)
-    income_tax = _apply_brackets(taxable, _PL_BRACKETS)
-    # Social: ~13.71% (pension 9.76% + disability 1.5% + sickness 2.45%)
-    social = min(gross_usd, _lc_to_usd(_PL_SOCIAL_CAP_LC, "PLN")) * _PL_SOCIAL_RATE
-    # Health: 9% of (gross - social)
-    health = (gross_usd - social) * _PL_HEALTH_RATE
+    health_rate = _cfg(_ALL_CONFIG, "Poland", "social", "health_rate")
+    health = (gross_usd - social) * health_rate
+
     return income_tax + social + health
 
 
-# Czech Republic
-_CZ_BRACKETS = _get_brackets("Czech Republic", "income")
-_CZ_SOCIAL_RATE = _cfg(_ALL_CONFIG, "Czech Republic", "social", "rate")
-
-
-def _czech_tax(gross_usd: float) -> float:
-    # The brackets from DB already encode the 15%/23% split
-    # But the original code used threshold-based logic, not _apply_brackets.
-    # To keep exact same behavior: use the bracket thresholds directly.
-    if _CZ_BRACKETS:
-        threshold = _CZ_BRACKETS[0][0]  # First bracket threshold (in USD already)
+def _tax_czech(gross_usd: float) -> float:
+    """Czech Republic 15%/23% two-tier + social."""
+    brackets = _get_brackets("Czech Republic", "income")
+    if brackets:
+        threshold = brackets[0][0]
         if gross_usd <= threshold:
             income_tax = gross_usd * 0.15
         else:
             income_tax = threshold * 0.15 + (gross_usd - threshold) * 0.23
     else:
         income_tax = gross_usd * 0.15
-    # Social + health: ~11% employee (6.5% social + 4.5% health)
-    social = gross_usd * _CZ_SOCIAL_RATE
+
+    social_rate = _cfg(_ALL_CONFIG, "Czech Republic", "social", "rate")
+    social = gross_usd * social_rate
+
     return income_tax + social
 
 
-# Estonia
-_EE_BRACKETS = _get_brackets("Estonia", "income")
-_EE_SOCIAL_RATE = _cfg(_ALL_CONFIG, "Estonia", "social", "rate")
-
-
-def _estonia_tax(gross_usd: float) -> float:
-    # Flat 20% above basic exemption — brackets encode this
-    # Original: basic_exemption from bracket[0], then flat 20% above
-    if _EE_BRACKETS:
-        basic_exemption = _EE_BRACKETS[0][0]  # First threshold = exemption
+def _tax_estonia(gross_usd: float) -> float:
+    """Estonia 20% flat above basic exemption."""
+    brackets = _get_brackets("Estonia", "income")
+    if brackets:
+        basic_exemption = brackets[0][0]
         taxable = max(0, gross_usd - basic_exemption)
         income_tax = taxable * 0.20
     else:
         income_tax = gross_usd * 0.20
-    # Social: employee pays only unemployment 1.6%; pension 2%
-    social = gross_usd * _EE_SOCIAL_RATE
+
+    social_rate = _cfg(_ALL_CONFIG, "Estonia", "social", "rate")
+    social = gross_usd * social_rate
+
     return income_tax + social
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# ASIA-PACIFIC (remaining) — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
+def _tax_new_zealand(gross_usd: float) -> float:
+    """New Zealand income tax + ACC levy."""
+    brackets = _get_brackets("New Zealand", "income")
+    income_tax = _apply_brackets(gross_usd, brackets)
 
-# New Zealand
-_NZ_BRACKETS = _get_brackets("New Zealand", "income")
-_NZ_ACC_RATE = _cfg(_ALL_CONFIG, "New Zealand", "social", "acc_rate")
+    acc_rate = _cfg(_ALL_CONFIG, "New Zealand", "social", "acc_rate")
+    acc = gross_usd * acc_rate
 
-
-def _new_zealand_tax(gross_usd: float) -> float:
-    income_tax = _apply_brackets(gross_usd, _NZ_BRACKETS)
-    # ACC levy: ~1.6%
-    acc = gross_usd * _NZ_ACC_RATE
     return income_tax + acc
 
 
-# Taiwan
-_TW_BRACKETS = _get_brackets("Taiwan", "income")
-_TW_STANDARD_DEDUCTION_LC = _cfg(
-    _ALL_CONFIG, "Taiwan", "income", "standard_deduction_lc"
-)
-_TW_SOCIAL_RATE = _cfg(_ALL_CONFIG, "Taiwan", "social", "rate")
+def _tax_taiwan(gross_usd: float) -> float:
+    """Taiwan income tax + social."""
+    deduction = _lc_to_usd(_cfg(_ALL_CONFIG, "Taiwan", "income", "standard_deduction_lc"), "TWD")
+    taxable = max(0, gross_usd - deduction)
 
+    brackets = _get_brackets("Taiwan", "income")
+    income_tax = _apply_brackets(taxable, brackets)
 
-def _taiwan_tax(gross_usd: float) -> float:
-    standard_deduction = _lc_to_usd(_TW_STANDARD_DEDUCTION_LC, "TWD")
-    taxable = max(0, gross_usd - standard_deduction)
-    income_tax = _apply_brackets(taxable, _TW_BRACKETS)
-    # NHI + Labor insurance: ~3.5%
-    social = gross_usd * _TW_SOCIAL_RATE
+    social_rate = _cfg(_ALL_CONFIG, "Taiwan", "social", "rate")
+    social = gross_usd * social_rate
+
     return income_tax + social
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# MIDDLE EAST / AFRICA — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
-
-_SA_GOSI_RATE = _cfg(_ALL_CONFIG, "Saudi Arabia", "social", "gosi_rate")
-
-
-def _saudi_arabia_tax(gross_usd: float) -> float:
-    """Saudi Arabia: 0% income tax for employees. GOSI ~9.75%."""
-    return gross_usd * _SA_GOSI_RATE
+def _tax_saudi_arabia(gross_usd: float) -> float:
+    """Saudi Arabia: 0% income tax, GOSI only."""
+    gosi_rate = _cfg(_ALL_CONFIG, "Saudi Arabia", "social", "gosi_rate")
+    return gross_usd * gosi_rate
 
 
-def _uae_tax(gross_usd: float) -> float:
-    """UAE: 0% income tax, no social contributions for expats."""
+def _tax_uae(gross_usd: float) -> float:
+    """UAE: 0% income tax, no social for expats."""
     return 0.0
 
 
-# South Africa
-_ZA_BRACKETS = _get_brackets("South Africa", "income")
-_ZA_PRIMARY_REBATE_LC = _cfg(_ALL_CONFIG, "South Africa", "income", "primary_rebate_lc")
-_ZA_UIF_RATE = _cfg(_ALL_CONFIG, "South Africa", "social", "uif_rate")
-_ZA_UIF_CAP_MONTHLY_LC = _cfg(
-    _ALL_CONFIG, "South Africa", "social", "uif_cap_monthly_lc"
-)
+def _tax_south_africa(gross_usd: float) -> float:
+    """South Africa income tax with rebate + UIF."""
+    brackets = _get_brackets("South Africa", "income")
+    rebate = _lc_to_usd(_cfg(_ALL_CONFIG, "South Africa", "income", "primary_rebate_lc"), "ZAR")
+    income_tax = max(0, _apply_brackets(gross_usd, brackets) - rebate)
 
+    uif_rate = _cfg(_ALL_CONFIG, "South Africa", "social", "uif_rate")
+    uif_cap = _lc_to_usd(
+        _cfg(_ALL_CONFIG, "South Africa", "social", "uif_cap_monthly_lc") * 12, "ZAR"
+    )
+    uif = min(gross_usd * uif_rate, uif_cap)
 
-def _south_africa_tax(gross_usd: float) -> float:
-    # Primary rebate
-    rebate = _lc_to_usd(_ZA_PRIMARY_REBATE_LC, "ZAR")
-    income_tax = max(0, _apply_brackets(gross_usd, _ZA_BRACKETS) - rebate)
-    # UIF: 1% of gross (capped)
-    uif = min(gross_usd * _ZA_UIF_RATE, _lc_to_usd(_ZA_UIF_CAP_MONTHLY_LC * 12, "ZAR"))
     return income_tax + uif
 
 
-# Egypt
-_EG_BRACKETS = _get_brackets("Egypt", "income")
-_EG_SOCIAL_RATE = _cfg(_ALL_CONFIG, "Egypt", "social", "rate")
+def _tax_egypt(gross_usd: float) -> float:
+    """Egypt income tax + social."""
+    brackets = _get_brackets("Egypt", "income")
+    income_tax = _apply_brackets(gross_usd, brackets)
 
+    social_rate = _cfg(_ALL_CONFIG, "Egypt", "social", "rate")
+    social = gross_usd * social_rate
 
-def _egypt_tax(gross_usd: float) -> float:
-    income_tax = _apply_brackets(gross_usd, _EG_BRACKETS)
-    # Social: ~11% employee
-    social = gross_usd * _EG_SOCIAL_RATE
     return income_tax + social
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# LATIN AMERICA — loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
+def _tax_brazil(gross_usd: float) -> float:
+    """Brazil income tax + INSS."""
+    brackets = _get_brackets("Brazil", "income")
+    income_tax = _apply_brackets(gross_usd, brackets)
 
-# Brazil
-_BR_BRACKETS = _get_brackets("Brazil", "income")
-_BR_INSS_RATE = _cfg(_ALL_CONFIG, "Brazil", "social", "inss_rate")
-_BR_INSS_CAP_MONTHLY_LC = _cfg(_ALL_CONFIG, "Brazil", "social", "inss_cap_monthly_lc")
-
-
-def _brazil_tax(gross_usd: float) -> float:
-    income_tax = _apply_brackets(gross_usd, _BR_BRACKETS)
-    # Social: INSS ~11% (capped) + FGTS is employer-only
-    social = min(
-        gross_usd * _BR_INSS_RATE, _lc_to_usd(_BR_INSS_CAP_MONTHLY_LC * 12, "BRL")
+    inss_rate = _cfg(_ALL_CONFIG, "Brazil", "social", "inss_rate")
+    inss_cap = _lc_to_usd(
+        _cfg(_ALL_CONFIG, "Brazil", "social", "inss_cap_monthly_lc") * 12, "BRL"
     )
+    social = min(gross_usd * inss_rate, inss_cap)
+
     return income_tax + social
 
 
-# Mexico
-_MX_BRACKETS = _get_brackets("Mexico", "income")
-_MX_SOCIAL_RATE = _cfg(_ALL_CONFIG, "Mexico", "social", "imss_rate")
+def _tax_mexico(gross_usd: float) -> float:
+    """Mexico income tax + IMSS."""
+    brackets = _get_brackets("Mexico", "income")
+    income_tax = _apply_brackets(gross_usd, brackets)
 
+    social_rate = _cfg(_ALL_CONFIG, "Mexico", "social", "imss_rate")
+    social = gross_usd * social_rate
 
-def _mexico_tax(gross_usd: float) -> float:
-    income_tax = _apply_brackets(gross_usd, _MX_BRACKETS)
-    # Social: IMSS ~3% employee
-    social = gross_usd * _MX_SOCIAL_RATE
     return income_tax + social
 
 
-# Chile
-_CL_BRACKETS = _get_brackets("Chile", "income")
-_CL_AFP_RATE = _cfg(_ALL_CONFIG, "Chile", "social", "afp_rate")
+def _tax_chile(gross_usd: float) -> float:
+    """Chile income tax + AFP."""
+    brackets = _get_brackets("Chile", "income")
+    income_tax = _apply_brackets(gross_usd, brackets)
 
+    afp_rate = _cfg(_ALL_CONFIG, "Chile", "social", "afp_rate")
+    social = gross_usd * afp_rate
 
-def _chile_tax(gross_usd: float) -> float:
-    income_tax = _apply_brackets(gross_usd, _CL_BRACKETS)
-    # AFP pension: ~12.5% employee (including commission)
-    social = gross_usd * _CL_AFP_RATE
     return income_tax + social
 
 
-# Colombia
-_CO_BRACKETS = _get_brackets("Colombia", "income")
-_CO_SOCIAL_RATE = _cfg(_ALL_CONFIG, "Colombia", "social", "rate")
+def _tax_colombia(gross_usd: float) -> float:
+    """Colombia income tax + social."""
+    brackets = _get_brackets("Colombia", "income")
+    income_tax = _apply_brackets(gross_usd, brackets)
 
+    social_rate = _cfg(_ALL_CONFIG, "Colombia", "social", "rate")
+    social = gross_usd * social_rate
 
-def _colombia_tax(gross_usd: float) -> float:
-    income_tax = _apply_brackets(gross_usd, _CO_BRACKETS)
-    # Social: pension 4% + health 4% = 8%
-    social = gross_usd * _CO_SOCIAL_RATE
     return income_tax + social
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# PAKISTAN TAX (2024-25) — for baseline calculation, loaded from DB
-# ═════════════════════════════════════════════════════════════════════════════
-
-PK_BRACKETS = _get_brackets("Pakistan", "income")
-
-
-def _pakistan_tax(gross_usd: float) -> float:
+def _tax_pakistan(gross_usd: float) -> float:
     """Pakistan income tax (salaried persons)."""
-    return _apply_brackets(gross_usd, PK_BRACKETS)
+    brackets = _get_brackets("Pakistan", "income")
+    return _apply_brackets(gross_usd, brackets)
 
 
-# ═════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
 # MAIN DISPATCH
-# ═════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
 
-_COUNTRY_TAX_FN = {
-    "USA": None,  # Handled specially (needs state)
-    "UK": _uk_tax,
-    "Canada": _canada_tax,
-    "Germany": _germany_tax,
-    "Switzerland": _switzerland_tax,
-    "France": _france_tax,
-    "Netherlands": _netherlands_tax,
-    "India": _india_tax,
-    "Australia": _australia_tax,
-    "Singapore": _singapore_tax,
-    "Hong Kong": _hong_kong_tax,
-    "Japan": _japan_tax,
-    "South Korea": _south_korea_tax,
-    "Israel": _israel_tax,
-    "China": _china_tax,
-    "Sweden": _sweden_tax,
-    "Denmark": _denmark_tax,
-    "Norway": _norway_tax,
-    "Finland": _finland_tax,
-    "Belgium": _belgium_tax,
-    "Austria": _austria_tax,
-    "Italy": _italy_tax,
-    "Spain": _spain_tax,
-    "Portugal": _portugal_tax,
-    "Poland": _poland_tax,
-    "Czech Republic": _czech_tax,
-    "Estonia": _estonia_tax,
-    "New Zealand": _new_zealand_tax,
-    "Taiwan": _taiwan_tax,
-    "Saudi Arabia": _saudi_arabia_tax,
-    "UAE": _uae_tax,
-    "South Africa": _south_africa_tax,
-    "Egypt": _egypt_tax,
-    "Brazil": _brazil_tax,
-    "Mexico": _mexico_tax,
-    "Chile": _chile_tax,
-    "Colombia": _colombia_tax,
-    "Pakistan": _pakistan_tax,
+_COUNTRY_TAX_FN: dict[str, Callable[[float], float]] = {
+    "UK": _tax_uk,
+    "Canada": _tax_canada,
+    "Germany": _tax_germany,
+    "Switzerland": _tax_switzerland,
+    "France": _tax_france,
+    "Netherlands": _tax_netherlands,
+    "India": _tax_india,
+    "Australia": _tax_australia,
+    "Singapore": _tax_singapore,
+    "Hong Kong": _tax_hong_kong,
+    "Japan": _tax_japan,
+    "South Korea": _tax_south_korea,
+    "Israel": _tax_israel,
+    "China": _tax_china,
+    "Sweden": _tax_sweden,
+    "Denmark": _tax_denmark,
+    "Norway": _tax_norway,
+    "Finland": _tax_finland,
+    "Belgium": _tax_belgium,
+    "Austria": _tax_austria,
+    "Italy": _tax_italy,
+    "Spain": _tax_spain,
+    "Portugal": _tax_portugal,
+    "Poland": _tax_poland,
+    "Czech Republic": _tax_czech,
+    "Estonia": _tax_estonia,
+    "New Zealand": _tax_new_zealand,
+    "Taiwan": _tax_taiwan,
+    "Saudi Arabia": _tax_saudi_arabia,
+    "UAE": _tax_uae,
+    "South Africa": _tax_south_africa,
+    "Egypt": _tax_egypt,
+    "Brazil": _tax_brazil,
+    "Mexico": _tax_mexico,
+    "Chile": _tax_chile,
+    "Colombia": _tax_colombia,
+    "Pakistan": _tax_pakistan,
 }
 
-# Countries not listed above — use a generic ~30% effective rate
+# Generic effective rate fallback
 _GENERIC_EFFECTIVE_RATE = _cfg(_ALL_CONFIG, "_generic", "income", "effective_rate")
 
 
@@ -1064,7 +875,7 @@ def calculate_annual_tax(
 
     Args:
         gross_usd_k: Gross annual salary in $K USD (e.g., 150 = $150,000)
-        country: Country name (must match keys in _COUNTRY_TAX_FN)
+        country: Country name (must match keys in _COUNTRY_TAX_FN or be "USA")
         us_state: US state code (2-letter) if country is USA
         us_city: US city for city-level taxes (e.g., "NYC")
 
@@ -1100,9 +911,9 @@ def get_effective_tax_rate(
     return 1.0 - (after_tax / gross_usd_k)
 
 
-# ═════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
 # VALIDATION
-# ═════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     # Test with typical tech salaries

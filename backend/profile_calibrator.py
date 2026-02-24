@@ -16,8 +16,19 @@ in the sum-to-1.0 constraint).
 
 import sqlite3
 from collections import defaultdict
+from pathlib import Path
+
+try:
+    import tomllib  # Python 3.11+
+except ImportError:
+    import tomli as tomllib  # fallback for Python 3.10
 
 from config import DB_PATH
+
+# ─── Load calibration weights from TOML ─────────────────────────────────────
+_WEIGHTS_PATH = Path(__file__).parent / "calibration_weights.toml"
+with open(_WEIGHTS_PATH, "rb") as f:
+    _W = tomllib.load(f)
 
 # ─── Default profile (matches the hardcoded user) ───────────────────────────
 DEFAULT_PROFILE = {
@@ -41,113 +52,6 @@ VALID_PERFORMANCE = ("top", "strong", "average", "below")
 VALID_RISK = ("high", "moderate", "low")
 VALID_ENGLISH = ("native", "professional", "intermediate", "basic")
 VALID_QUANT = ("strong", "moderate", "weak")
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# CALIBRATION MULTIPLIER CONSTANTS
-#
-# All tunable calibration weights in one place.  A multiplier > 1.0 boosts an
-# edge probability, < 1.0 suppresses it, and 1.0 means no change.
-# ═══════════════════════════════════════════════════════════════════════════════
-
-# ─── Risk tolerance (root-level branch weights) ─────────────────────────────
-RISK_HIGH_RISKY_BOOST = 1.4  # high risk → risky paths (trading/startup/freelance)
-RISK_HIGH_STABLE_SUPPRESS = 0.85  # high risk → stable paths suppressed
-RISK_LOW_RISKY_SUPPRESS = 0.6  # low risk → risky paths suppressed
-RISK_LOW_STABLE_BOOST = 1.2  # low risk → stable paths boosted
-RISK_HIGH_TRADE_FULLTIME = 1.3  # high risk → more likely full-time trading
-RISK_HIGH_TRADE_QUIT = 0.7  # high risk → less likely to quit trading
-RISK_LOW_TRADE_FULLTIME = 0.7  # low risk → less likely full-time trading
-RISK_LOW_TRADE_QUIT = 1.3  # low risk → more likely to quit trading
-RISK_HIGH_STARTUP_BOOST = 1.2  # high risk → startup scale/funding boost
-RISK_HIGH_STARTUP_ABANDON = 0.8  # high risk → less likely to abandon startup
-RISK_LOW_STARTUP_SUPPRESS = 0.8  # low risk → startup scale/funding suppressed
-RISK_LOW_STARTUP_ABANDON = 1.2  # low risk → more likely to abandon startup
-
-# ─── Performance rating ─────────────────────────────────────────────────────
-PERF_TOP_PROMOTED = 1.35  # top performer → promoted at Motive
-PERF_AVG_PROMOTED = 0.65  # average performer → promoted suppressed
-PERF_BELOW_PROMOTED = 0.35  # below average → promoted heavily suppressed
-PERF_TOP_NOTPROMOTED = 0.70  # top → less likely stuck unpromoted
-PERF_AVG_NOTPROMOTED = 1.40  # average → more likely stuck unpromoted
-PERF_BELOW_NOTPROMOTED = 1.70  # below → most likely stuck unpromoted
-PERF_TOP_RETRY_PROMOTED = 1.30  # top → retry promotion boost
-PERF_AVG_RETRY_PROMOTED = 0.70  # average → retry suppressed
-PERF_BELOW_RETRY_PROMOTED = 0.45  # below → retry heavily suppressed
-PERF_TOP_RETRY_LEAVE = 0.75  # top → less likely to leave after retry
-PERF_AVG_RETRY_LEAVE = 1.25  # average → more likely to leave
-PERF_BELOW_RETRY_LEAVE = 1.50  # below → most likely to leave
-PERF_TOP_SENIOR = 1.20  # top → staff/senior promotions boosted
-PERF_AVG_SENIOR = 0.80  # average → senior suppressed
-PERF_BELOW_SENIOR = 0.60  # below → senior heavily suppressed
-
-# ─── English level ──────────────────────────────────────────────────────────
-ENG_NATIVE_REMOTE = 1.25  # native → remote/freelance boost
-ENG_INTERMEDIATE_REMOTE = 0.65  # intermediate → remote suppressed
-ENG_BASIC_REMOTE = 0.35  # basic → remote heavily suppressed
-ENG_NATIVE_LOCAL = 0.90  # native → slightly less likely to stay local
-ENG_INTERMEDIATE_LOCAL = 1.15  # intermediate → local boost
-ENG_BASIC_LOCAL = 1.30  # basic → strong local boost
-
-# ─── Years of experience ────────────────────────────────────────────────────
-EXP_BASELINE_LOW = 1.5  # lower bound of baseline range
-EXP_BASELINE_HIGH = 2.5  # upper bound of baseline range
-EXP_5PLUS_PROMOTED = 1.35  # 5+ yrs → promotion boost
-EXP_3PLUS_PROMOTED = 1.15  # 3+ yrs → mild promotion boost
-EXP_1MINUS_PROMOTED = 0.65  # <=1 yr → promotion suppressed
-EXP_5PLUS_REMOTE = 1.30  # 5+ yrs → remote job boost
-EXP_3PLUS_REMOTE = 1.10  # 3+ yrs → mild remote boost
-EXP_1MINUS_REMOTE = 0.70  # <=1 yr → remote suppressed
-EXP_5PLUS_STAGNATE = 0.70  # 5+ yrs → less likely to stagnate
-EXP_3PLUS_STAGNATE = 0.85  # 3+ yrs → slightly less stagnation
-EXP_1MINUS_STAGNATE = 1.30  # <=1 yr → more likely to stagnate
-
-# ─── Available savings ($USD) ───────────────────────────────────────────────
-SAVINGS_20K_TRADING = 1.30  # $20k+ → trading entry boost
-SAVINGS_10K_TRADING = 1.15  # $10k+ → mild trading boost
-SAVINGS_2K_TRADING = 0.60  # <=2k → trading entry suppressed
-SAVINGS_1K_TRADING = 0.30  # <=1k → trading heavily suppressed
-SAVINGS_15K_STARTUP = 1.25  # $15k+ → startup entry boost
-SAVINGS_10K_STARTUP = 1.10  # $10k+ → mild startup boost
-SAVINGS_2K_STARTUP = 0.65  # <=2k → startup entry suppressed
-SAVINGS_20K_STOCKS = 1.30  # $20k+ → stocks/options boost
-SAVINGS_3K_STOCKS = 0.60  # <=3k → stocks/options suppressed
-SAVINGS_1K_CRYPTO = 0.70  # <=1k → crypto suppressed
-SAVINGS_10K_CRYPTO = 1.10  # $10k+ → crypto boost
-SAVINGS_20K_PROFITABLE = 1.20  # $20k+ → trading profitability boost
-SAVINGS_2K_PROFITABLE = 0.75  # <=2k → profitability suppressed
-
-# ─── Quantitative aptitude ──────────────────────────────────────────────────
-QUANT_STRONG_ALGO = 1.40  # strong quant → algo/quant trading boost
-QUANT_WEAK_ALGO = 0.55  # weak quant → algo trading suppressed
-QUANT_STRONG_PROFITABLE = 1.20  # strong → general trading profit boost
-QUANT_WEAK_PROFITABLE = 0.80  # weak → trading profit suppressed
-QUANT_STRONG_LOSS = 0.75  # strong → less likely trading losses
-QUANT_WEAK_LOSS = 1.35  # weak → more likely trading losses
-
-# ─── Side projects ──────────────────────────────────────────────────────────
-PROJECTS_STARTUP_TRACTION = 1.30  # has projects → startup traction/funding boost
-PROJECTS_STARTUP_FAILED = 0.75  # has projects → less likely startup failure
-PROJECTS_REMOTE_BOOST = 1.15  # has projects → remote job portfolio boost
-PROJECTS_STARTUP_ROOT = 1.20  # has projects → root→startup boost
-
-# ─── Freelance profile ─────────────────────────────────────────────────────
-FREELANCE_ROOT = 1.35  # has profile → root→freelance boost
-FREELANCE_SUCCESS = 1.40  # has profile → freelance premium/fulltime boost
-FREELANCE_SIDE = 1.15  # has profile → side-freelance boost
-FREELANCE_DRIED = 0.65  # has profile → less likely clients dry up
-FREELANCE_PLATFORM = 1.20  # has profile → platform freelancing boost
-
-# ─── Publications ───────────────────────────────────────────────────────────
-PUBS_CAREER = 1.15  # has pubs → career advancement boost
-PUBS_REMOTE = 1.20  # has pubs → remote ML job boost
-PUBS_STARTUP_AI = 1.15  # has pubs → AI SaaS startup boost
-
-# ─── GPA ────────────────────────────────────────────────────────────────────
-GPA_BASELINE_LOW = 3.3  # lower bound of baseline range
-GPA_BASELINE_HIGH = 3.7  # upper bound of baseline range
-GPA_HIGH_PROMOTED = 1.10  # high GPA → slight promotion boost
-GPA_LOW_PROMOTED = 0.90  # low GPA → slight promotion suppress
 
 
 def get_profile(conn=None):
@@ -279,6 +183,8 @@ def _risk_tolerance_multiplier(profile, source_id, target_id):
     if risk == "moderate":
         return 1.0
 
+    w = _W["risk_tolerance"]
+
     # Root → trading/startup/freelance
     risky_targets = {"p1_trading", "p1_startup", "p1_freelance"}
     # Root → stable career choices
@@ -287,38 +193,38 @@ def _risk_tolerance_multiplier(profile, source_id, target_id):
     if source_id == "root":
         if risk == "high":
             if target_id in risky_targets:
-                return RISK_HIGH_RISKY_BOOST
+                return w["high_risky_boost"]
             if target_id in stable_targets:
-                return RISK_HIGH_STABLE_SUPPRESS
+                return w["high_stable_suppress"]
         elif risk == "low":
             if target_id in risky_targets:
-                return RISK_LOW_RISKY_SUPPRESS
+                return w["low_risky_suppress"]
             if target_id in stable_targets:
-                return RISK_LOW_STABLE_BOOST
+                return w["low_stable_boost"]
 
     # Within trading path: high risk → more likely to go full-time
     if risk == "high":
         if target_id == "p4_trade_fulltime":
-            return RISK_HIGH_TRADE_FULLTIME
+            return w["high_trade_fulltime"]
         if target_id == "p4_trade_quit":
-            return RISK_HIGH_TRADE_QUIT
+            return w["high_trade_quit"]
     elif risk == "low":
         if target_id == "p4_trade_fulltime":
-            return RISK_LOW_TRADE_FULLTIME
+            return w["low_trade_fulltime"]
         if target_id == "p4_trade_quit":
-            return RISK_LOW_TRADE_QUIT
+            return w["low_trade_quit"]
 
     # Within startup path: high risk → more likely to scale/fund, less abandon
     if risk == "high":
         if target_id in ("p4_startup_scale", "p3_startup_funded"):
-            return RISK_HIGH_STARTUP_BOOST
+            return w["high_startup_boost"]
         if target_id == "p4_startup_abandoned":
-            return RISK_HIGH_STARTUP_ABANDON
+            return w["high_startup_abandon"]
     elif risk == "low":
         if target_id in ("p4_startup_scale", "p3_startup_funded"):
-            return RISK_LOW_STARTUP_SUPPRESS
+            return w["low_startup_suppress"]
         if target_id == "p4_startup_abandoned":
-            return RISK_LOW_STARTUP_ABANDON
+            return w["low_startup_abandon"]
 
     return 1.0
 
@@ -332,40 +238,42 @@ def _performance_multiplier(profile, source_id, target_id):
     if perf == "strong":
         return 1.0  # baseline
 
+    w = _W["performance"]
+
     # Root → promoted at Motive
     if source_id == "root" and target_id == "p1_promoted":
         if perf == "top":
-            return PERF_TOP_PROMOTED
+            return w["top_promoted"]
         elif perf == "average":
-            return PERF_AVG_PROMOTED
+            return w["avg_promoted"]
         elif perf == "below":
-            return PERF_BELOW_PROMOTED
+            return w["below_promoted"]
 
     # Root → not promoted (inverse)
     if source_id == "root" and target_id == "p1_notpromoted_stay":
         if perf == "top":
-            return PERF_TOP_NOTPROMOTED
+            return w["top_notpromoted"]
         elif perf == "average":
-            return PERF_AVG_NOTPROMOTED
+            return w["avg_notpromoted"]
         elif perf == "below":
-            return PERF_BELOW_NOTPROMOTED
+            return w["below_notpromoted"]
 
     # Career advancement: retry promotion
     if target_id == "p3_retry_promoted":
         if perf == "top":
-            return PERF_TOP_RETRY_PROMOTED
+            return w["top_retry_promoted"]
         elif perf == "average":
-            return PERF_AVG_RETRY_PROMOTED
+            return w["avg_retry_promoted"]
         elif perf == "below":
-            return PERF_BELOW_RETRY_PROMOTED
+            return w["below_retry_promoted"]
 
     if target_id == "p3_retry_failed_leave":
         if perf == "top":
-            return PERF_TOP_RETRY_LEAVE
+            return w["top_retry_leave"]
         elif perf == "average":
-            return PERF_AVG_RETRY_LEAVE
+            return w["avg_retry_leave"]
         elif perf == "below":
-            return PERF_BELOW_RETRY_LEAVE
+            return w["below_retry_leave"]
 
     # Staff/senior promotions
     if target_id in (
@@ -375,11 +283,11 @@ def _performance_multiplier(profile, source_id, target_id):
         "p4_local_staff",
     ):
         if perf == "top":
-            return PERF_TOP_SENIOR
+            return w["top_senior"]
         elif perf == "average":
-            return PERF_AVG_SENIOR
+            return w["avg_senior"]
         elif perf == "below":
-            return PERF_BELOW_SENIOR
+            return w["below_senior"]
 
     return 1.0
 
@@ -392,6 +300,8 @@ def _english_multiplier(profile, source_id, target_id):
     eng = profile["english_level"]
     if eng == "professional":
         return 1.0
+
+    w = _W["english"]
 
     # Remote USD job targets
     remote_targets = {
@@ -419,11 +329,11 @@ def _english_multiplier(profile, source_id, target_id):
 
     if target_id in remote_targets or target_id in freelance_targets:
         if eng == "native":
-            return ENG_NATIVE_REMOTE
+            return w["native_remote"]
         elif eng == "intermediate":
-            return ENG_INTERMEDIATE_REMOTE
+            return w["intermediate_remote"]
         elif eng == "basic":
-            return ENG_BASIC_REMOTE
+            return w["basic_remote"]
 
     # Local/stay targets get inverse boost when English is weak
     local_targets = {
@@ -434,11 +344,11 @@ def _english_multiplier(profile, source_id, target_id):
     }
     if target_id in local_targets:
         if eng == "native":
-            return ENG_NATIVE_LOCAL
+            return w["native_local"]
         elif eng == "intermediate":
-            return ENG_INTERMEDIATE_LOCAL
+            return w["intermediate_local"]
         elif eng == "basic":
-            return ENG_BASIC_LOCAL
+            return w["basic_local"]
 
     return 1.0
 
@@ -449,17 +359,19 @@ def _experience_multiplier(profile, source_id, target_id):
     job competitiveness. Baseline is 2.0 years.
     """
     yoe = profile["years_experience"]
-    if EXP_BASELINE_LOW <= yoe <= EXP_BASELINE_HIGH:
+    w = _W["experience"]
+
+    if w["baseline_low"] <= yoe <= w["baseline_high"]:
         return 1.0  # baseline range
 
     # More experience → higher promotion probability
     if target_id in ("p1_promoted", "p3_retry_promoted", "p2_local_promoted"):
         if yoe >= 5:
-            return EXP_5PLUS_PROMOTED
+            return w["five_plus_promoted"]
         elif yoe >= 3:
-            return EXP_3PLUS_PROMOTED
+            return w["three_plus_promoted"]
         elif yoe <= 1:
-            return EXP_1MINUS_PROMOTED
+            return w["one_minus_promoted"]
 
     # More experience → better remote job odds
     if target_id in (
@@ -469,11 +381,11 @@ def _experience_multiplier(profile, source_id, target_id):
         "p4_remote_staff",
     ):
         if yoe >= 5:
-            return EXP_5PLUS_REMOTE
+            return w["five_plus_remote"]
         elif yoe >= 3:
-            return EXP_3PLUS_REMOTE
+            return w["three_plus_remote"]
         elif yoe <= 1:
-            return EXP_1MINUS_REMOTE
+            return w["one_minus_remote"]
 
     # Less experience → more likely to stagnate
     if target_id in (
@@ -482,11 +394,11 @@ def _experience_multiplier(profile, source_id, target_id):
         "p3_l5_stalled_motive",
     ):
         if yoe >= 5:
-            return EXP_5PLUS_STAGNATE
+            return w["five_plus_stagnate"]
         elif yoe >= 3:
-            return EXP_3PLUS_STAGNATE
+            return w["three_plus_stagnate"]
         elif yoe <= 1:
-            return EXP_1MINUS_STAGNATE
+            return w["one_minus_stagnate"]
 
     return 1.0
 
@@ -497,46 +409,47 @@ def _savings_multiplier(profile, source_id, target_id):
     Baseline is $5,000 USD.
     """
     savings = profile["available_savings_usd"]
+    w = _W["savings"]
 
     # Trading entry (needs capital)
     if source_id == "root" and target_id == "p1_trading":
         if savings >= 20000:
-            return SAVINGS_20K_TRADING
+            return w["twenty_k_trading"]
         elif savings >= 10000:
-            return SAVINGS_10K_TRADING
+            return w["ten_k_trading"]
         elif savings <= 2000:
-            return SAVINGS_2K_TRADING
+            return w["two_k_trading"]
         elif savings <= 1000:
-            return SAVINGS_1K_TRADING
+            return w["one_k_trading"]
 
     # Startup entry
     if source_id == "root" and target_id == "p1_startup":
         if savings >= 15000:
-            return SAVINGS_15K_STARTUP
+            return w["fifteen_k_startup"]
         elif savings >= 10000:
-            return SAVINGS_10K_STARTUP
+            return w["ten_k_startup"]
         elif savings <= 2000:
-            return SAVINGS_2K_STARTUP
+            return w["two_k_startup"]
 
     # Trading: stocks/options need more capital than crypto
     if source_id == "p1_trading" and target_id == "p2_trade_stocks":
         if savings >= 20000:
-            return SAVINGS_20K_STOCKS
+            return w["twenty_k_stocks"]
         elif savings <= 3000:
-            return SAVINGS_3K_STOCKS
+            return w["three_k_stocks"]
 
     if source_id == "p1_trading" and target_id == "p2_trade_crypto":
         if savings <= 1000:
-            return SAVINGS_1K_CRYPTO
+            return w["one_k_crypto"]
         elif savings >= 10000:
-            return SAVINGS_10K_CRYPTO
+            return w["ten_k_crypto"]
 
     # Trading profitability scales with capital
     if target_id == "p3_trade_profitable":
         if savings >= 20000:
-            return SAVINGS_20K_PROFITABLE
+            return w["twenty_k_profitable"]
         elif savings <= 2000:
-            return SAVINGS_2K_PROFITABLE
+            return w["two_k_profitable"]
 
     return 1.0
 
@@ -550,26 +463,28 @@ def _quant_aptitude_multiplier(profile, source_id, target_id):
     if quant == "moderate":
         return 1.0
 
+    w = _W["quant_aptitude"]
+
     # Algo trading path
     if target_id in ("p2_trade_algo", "p3_trade_algo_edge", "p4_trade_quant_fund"):
         if quant == "strong":
-            return QUANT_STRONG_ALGO
+            return w["strong_algo"]
         elif quant == "weak":
-            return QUANT_WEAK_ALGO
+            return w["weak_algo"]
 
     # General trading profitability
     if target_id == "p3_trade_profitable":
         if quant == "strong":
-            return QUANT_STRONG_PROFITABLE
+            return w["strong_profitable"]
         elif quant == "weak":
-            return QUANT_WEAK_PROFITABLE
+            return w["weak_profitable"]
 
     # Trading losses
     if target_id == "p3_trade_loss":
         if quant == "strong":
-            return QUANT_STRONG_LOSS
+            return w["strong_loss"]
         elif quant == "weak":
-            return QUANT_WEAK_LOSS
+            return w["weak_loss"]
 
     return 1.0
 
@@ -583,19 +498,21 @@ def _side_projects_multiplier(profile, source_id, target_id):
     if not has_projects:
         return 1.0
 
+    w = _W["side_projects"]
+
     # Startup traction and funding
     if target_id in ("p3_startup_traction", "p3_startup_funded"):
-        return PROJECTS_STARTUP_TRACTION
+        return w["startup_traction"]
     if target_id == "p3_startup_failed":
-        return PROJECTS_STARTUP_FAILED
+        return w["startup_failed"]
 
     # Remote job applications (portfolio)
     if target_id in ("p2_l4_remoteUSD", "p2_np_remote"):
-        return PROJECTS_REMOTE_BOOST
+        return w["remote_boost"]
 
     # Root → startup becomes more likely
     if source_id == "root" and target_id == "p1_startup":
-        return PROJECTS_STARTUP_ROOT
+        return w["startup_root"]
 
     return 1.0
 
@@ -609,21 +526,23 @@ def _freelance_profile_multiplier(profile, source_id, target_id):
     if not has_profile:
         return 1.0
 
+    w = _W["freelance_profile"]
+
     # Root → freelance more likely
     if source_id == "root" and target_id == "p1_freelance":
-        return FREELANCE_ROOT
+        return w["root"]
 
     # Freelance success paths
     if target_id in ("p3_freelance_fulltime", "p4_freelance_premium"):
-        return FREELANCE_SUCCESS
+        return w["success"]
     if target_id == "p3_freelance_side":
-        return FREELANCE_SIDE
+        return w["side"]
     if target_id == "p3_freelance_dried":
-        return FREELANCE_DRIED
+        return w["dried"]
 
     # Platform-based freelancing (existing reviews help)
     if target_id == "p2_freelance_platform":
-        return FREELANCE_PLATFORM
+        return w["platform"]
 
     return 1.0
 
@@ -637,17 +556,19 @@ def _publications_multiplier(profile, source_id, target_id):
     if not has_pubs:
         return 1.0
 
+    w = _W["publications"]
+
     # Career advancement (research background valued)
     if target_id in ("p1_promoted", "p3_l5_achieved", "p4_motive_staff"):
-        return PUBS_CAREER
+        return w["career"]
 
     # Remote job competitiveness (ML research is valued)
     if target_id in ("p2_l4_remoteUSD", "p3_remote_senior", "p4_remote_staff"):
-        return PUBS_REMOTE
+        return w["remote"]
 
     # Startup AI SaaS (research depth = better product)
     if target_id == "p2_startup_ai_saas":
-        return PUBS_STARTUP_AI
+        return w["startup_ai"]
 
     return 1.0
 
@@ -660,15 +581,17 @@ def _gpa_multiplier(profile, source_id, target_id):
     Also slightly affects career prestige perceptions.
     """
     gpa = profile.get("gpa")
-    if gpa is None or GPA_BASELINE_LOW <= gpa <= GPA_BASELINE_HIGH:
+    w = _W["gpa"]
+
+    if gpa is None or w["baseline_low"] <= gpa <= w["baseline_high"]:
         return 1.0  # baseline range
 
     # Higher GPA → better promotion perception
     if target_id == "p1_promoted":
         if gpa >= 3.8:
-            return GPA_HIGH_PROMOTED
+            return w["high_promoted"]
         elif gpa <= 2.5:
-            return GPA_LOW_PROMOTED
+            return w["low_promoted"]
 
     return 1.0
 

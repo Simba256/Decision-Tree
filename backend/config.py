@@ -58,6 +58,18 @@ BASELINE_ANNUAL_SALARY_USD_K = 9.5
 BASELINE_ANNUAL_GROWTH = 0.08
 
 
+# ─── Calculator Constants ─────────────────────────────────────────────────────
+
+# Masters path (networth_calculator.py)
+MASTERS_TOTAL_YEARS = 12  # 2yr study + 10yr work
+MASTERS_DEFAULT_FAMILY_YEAR = 5  # Calendar year when household transitions to family
+MASTERS_DEFAULT_DURATION = 2.0  # Default program duration in years
+
+# Career path (career_networth_calculator.py) - stays in Pakistan
+CAREER_TOTAL_YEARS = 10
+CAREER_DEFAULT_FAMILY_YEAR = 3  # Earlier family transition for Pakistan
+
+
 # ─── Logging ─────────────────────────────────────────────────────────────────
 
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"

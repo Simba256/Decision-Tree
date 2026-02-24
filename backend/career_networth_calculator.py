@@ -26,7 +26,14 @@ All values in $K USD unless otherwise noted.
 import sqlite3
 from typing import Optional
 
-from config import DB_PATH, get_db, BASELINE_ANNUAL_SALARY_USD_K, BASELINE_ANNUAL_GROWTH
+from config import (
+    DB_PATH,
+    get_db,
+    BASELINE_ANNUAL_SALARY_USD_K,
+    BASELINE_ANNUAL_GROWTH,
+    CAREER_TOTAL_YEARS,
+    CAREER_DEFAULT_FAMILY_YEAR,
+)
 from calculator_common import (
     interpolate_salary,
     avg_summary,
@@ -36,13 +43,13 @@ from tax_data import calculate_annual_tax
 from living_costs import get_pakistan_living_cost
 
 # ─── Configuration ───────────────────────────────────────────────────────────
+# Constants imported from config.py for consistency:
+# - CAREER_TOTAL_YEARS (10): all working years, no study period
+# - CAREER_DEFAULT_FAMILY_YEAR (3): earlier than masters (no study gap)
 
-# Calendar year when household transitions from single to family
-# Year 3 for career paths (no 2-year study gap, so family transition earlier)
-FAMILY_TRANSITION_YEAR = 3
-
-# Total years for career path projection
-TOTAL_YEARS = 10
+# Local aliases for backwards compatibility
+FAMILY_TRANSITION_YEAR = CAREER_DEFAULT_FAMILY_YEAR
+TOTAL_YEARS = CAREER_TOTAL_YEARS
 
 
 # ─── Core Calculation Functions ──────────────────────────────────────────────
