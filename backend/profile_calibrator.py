@@ -737,3 +737,316 @@ def get_calibration_summary(profile=None, conn=None):
         "edges_changed": len(changed),
         "changes": changed,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# POST-MASTERS EDGE CALIBRATION
+#
+# Similar to the career path calibration above, but includes:
+# - Location ecosystem multipliers (startup strength, bigtech presence)
+# - Profile-based adjustments for founder/remote paths
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _pm_risk_tolerance_multiplier(profile, source_id, target_id):
+    """Risk tolerance affects founder and startup paths in post-masters tree."""
+    risk = profile["risk_tolerance"]
+    if risk == "moderate":
+        return 1.0
+
+    w = _W.get("pm_profile", {})
+
+    # Founder paths
+    founder_targets = {
+        "pm_founder_immediate",
+        "pm_bigtech_senior_to_founder",
+        "pm_pk_founder",
+        "pm_serial_founder",
+    }
+
+    # Startup paths
+    startup_targets = {
+        "pm_startup_join",
+        "pm_bigtech_to_startup",
+        "pm_midsize_to_startup",
+        "pm_startup_senior",
+    }
+
+    # Stable paths
+    stable_targets = {
+        "pm_bigtech",
+        "pm_bigtech_senior",
+        "pm_bigtech_staff",
+        "pm_midsize_tech",
+    }
+
+    if risk == "high":
+        if target_id in founder_targets:
+            return w.get("high_risk_founder_boost", 1.5)
+        if target_id in startup_targets:
+            return w.get("high_risk_startup_join", 1.25)
+    elif risk == "low":
+        if target_id in founder_targets:
+            return w.get("low_risk_founder_suppress", 0.4)
+        if target_id in stable_targets:
+            return w.get("low_risk_bigtech_boost", 1.2)
+
+    return 1.0
+
+
+def _pm_experience_multiplier(profile, source_id, target_id):
+    """Experience affects founder success probability."""
+    yoe = profile["years_experience"]
+    w = _W.get("pm_profile", {})
+
+    founder_success_targets = {
+        "pm_founder_success",
+        "pm_serial_founder",
+        "pm_startup_win",
+    }
+
+    if target_id in founder_success_targets:
+        if yoe >= 5:
+            return w.get("yoe_5plus_founder_success", 1.3)
+        elif yoe >= 3:
+            return w.get("yoe_3plus_founder_success", 1.15)
+        elif yoe <= 1:
+            return w.get("yoe_1minus_founder_success", 0.7)
+
+    return 1.0
+
+
+def _pm_savings_multiplier(profile, source_id, target_id):
+    """Savings affects founder feasibility (need runway to bootstrap)."""
+    savings = profile["available_savings_usd"]
+    w = _W.get("pm_profile", {})
+
+    founder_targets = {
+        "pm_founder_immediate",
+        "pm_bigtech_senior_to_founder",
+        "pm_pk_founder",
+        "pm_serial_founder",
+    }
+
+    if target_id in founder_targets:
+        if savings >= 30000:
+            return w.get("savings_30k_founder_boost", 1.3)
+        elif savings >= 15000:
+            return w.get("savings_15k_founder_boost", 1.15)
+        elif savings <= 5000:
+            return w.get("savings_5k_founder_suppress", 0.6)
+        elif savings <= 2000:
+            return w.get("savings_2k_founder_suppress", 0.3)
+
+    return 1.0
+
+
+def _pm_performance_multiplier(profile, source_id, target_id):
+    """Performance affects bigtech advancement paths."""
+    perf = profile["performance_rating"]
+    w = _W.get("pm_profile", {})
+
+    if perf == "strong":
+        return 1.0
+
+    staff_targets = {"pm_bigtech_staff", "pm_midsize_staff", "pm_remote_staff"}
+    manager_targets = {"pm_bigtech_manager", "pm_midsize_lead"}
+    plateau_targets = {"pm_bigtech_plateau"}
+
+    if perf == "top":
+        if target_id in staff_targets:
+            return w.get("top_bigtech_staff", 1.35)
+        if target_id in manager_targets:
+            return w.get("top_bigtech_manager", 1.25)
+    elif perf == "average":
+        if target_id in plateau_targets:
+            return w.get("avg_bigtech_plateau", 1.3)
+    elif perf == "below":
+        if target_id in plateau_targets:
+            return w.get("below_bigtech_plateau", 1.5)
+
+    return 1.0
+
+
+def _pm_english_multiplier(profile, source_id, target_id):
+    """English level affects remote work success."""
+    eng = profile["english_level"]
+    w = _W.get("pm_profile", {})
+
+    if eng == "professional":
+        return 1.0
+
+    remote_targets = {
+        "pm_remote_arbitrage",
+        "pm_remote_senior",
+        "pm_remote_staff",
+        "pm_remote_nomad",
+        "pm_pk_remote_usd",
+        "pm_pk_remote_senior",
+        "pm_pk_remote_direct",
+    }
+
+    if target_id in remote_targets:
+        if eng == "native":
+            return w.get("native_remote_boost", 1.25)
+        elif eng == "intermediate":
+            return w.get("intermediate_remote_suppress", 0.65)
+        elif eng == "basic":
+            return w.get("basic_remote_suppress", 0.35)
+
+    return 1.0
+
+
+def _pm_side_projects_multiplier(profile, source_id, target_id):
+    """Side projects boost startup success and funding."""
+    has_projects = bool(profile["has_side_projects"])
+    if not has_projects:
+        return 1.0
+
+    w = _W.get("pm_profile", {})
+
+    success_targets = {"pm_startup_win", "pm_founder_success"}
+    funding_targets = {"pm_serial_founder"}
+
+    if target_id in success_targets:
+        return w.get("side_projects_startup_success", 1.3)
+    if target_id in funding_targets:
+        return w.get("side_projects_startup_funding", 1.25)
+
+    return 1.0
+
+
+def _pm_publications_multiplier(profile, source_id, target_id):
+    """Publications boost AI/ML startup success."""
+    has_pubs = bool(profile["has_publications"])
+    if not has_pubs:
+        return 1.0
+
+    w = _W.get("pm_profile", {})
+
+    ai_targets = {"pm_pk_startup_global", "pm_founder_success", "pm_startup_win"}
+
+    if target_id in ai_targets:
+        return w.get("publications_ai_startup", 1.2)
+
+    return 1.0
+
+
+# Post-masters multiplier registry
+PM_MULTIPLIER_RULES = [
+    _pm_risk_tolerance_multiplier,
+    _pm_experience_multiplier,
+    _pm_savings_multiplier,
+    _pm_performance_multiplier,
+    _pm_english_multiplier,
+    _pm_side_projects_multiplier,
+    _pm_publications_multiplier,
+]
+
+
+def calibrate_postmasters_edges(profile=None, ecosystem=None, conn=None):
+    """
+    Load all post-masters edges, apply profile + location multipliers,
+    re-normalize child groups to sum to 1.0, and return calibrated edges.
+
+    Args:
+        profile: dict of profile values, or None to load from DB.
+        ecosystem: LocationEcosystem for location-based adjustments.
+        conn: optional SQLite connection.
+
+    Returns:
+        list of edge dicts with 'calibrated_probability' added.
+    """
+    close_conn = False
+    if conn is None:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        close_conn = True
+
+    if profile is None:
+        profile = get_profile(conn)
+
+    # Load all post-masters edges
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, source_id, target_id, base_probability,
+               startup_ecosystem_weight, bigtech_presence_weight, link_type, note
+        FROM postmasters_edges
+    """)
+    rows = cursor.fetchall()
+    edges = [dict(row) for row in rows]
+
+    if close_conn:
+        conn.close()
+
+    # Get location weights from config
+    loc_weights = _W.get("pm_location", {})
+
+    # Apply multipliers to each edge
+    for edge in edges:
+        if edge["link_type"] != "child":
+            edge["calibrated_probability"] = edge["base_probability"]
+            edge["multiplier"] = 1.0
+            continue
+
+        # Start with profile-based multipliers
+        combined_multiplier = 1.0
+        for rule_fn in PM_MULTIPLIER_RULES:
+            m = rule_fn(profile, edge["source_id"], edge["target_id"])
+            combined_multiplier *= m
+
+        # Apply location-based adjustments if ecosystem provided
+        if ecosystem:
+            # Startup ecosystem adjustment
+            startup_weight = edge.get("startup_ecosystem_weight") or 0.0
+            if startup_weight > 0:
+                ecosystem_delta = ecosystem.startup_ecosystem_strength - 1.0
+                startup_adjustment = 1.0 + startup_weight * ecosystem_delta
+                combined_multiplier *= max(0.5, min(2.0, startup_adjustment))
+
+            # Bigtech presence adjustment
+            bigtech_weight = edge.get("bigtech_presence_weight") or 0.0
+            if bigtech_weight > 0:
+                presence = ecosystem.bigtech_presence or "none"
+                bigtech_mult = loc_weights.get(f"bigtech_{presence}", 1.0)
+                bigtech_adjustment = 1.0 + bigtech_weight * (bigtech_mult - 1.0)
+                combined_multiplier *= max(0.5, min(2.0, bigtech_adjustment))
+
+        edge["multiplier"] = round(combined_multiplier, 4)
+        edge["raw_adjusted"] = edge["base_probability"] * combined_multiplier
+
+    # Re-normalize child groups to sum to 1.0
+    child_groups = defaultdict(list)
+    for edge in edges:
+        if edge["link_type"] == "child":
+            child_groups[edge["source_id"]].append(edge)
+
+    for source_id, group in child_groups.items():
+        total_raw = sum(e.get("raw_adjusted", e["base_probability"]) for e in group)
+        if total_raw > 0:
+            for e in group:
+                e["calibrated_probability"] = round(
+                    e.get("raw_adjusted", e["base_probability"]) / total_raw, 4
+                )
+        else:
+            n = len(group)
+            for e in group:
+                e["calibrated_probability"] = round(1.0 / n, 4)
+
+    # Clean up intermediate field
+    for edge in edges:
+        edge.pop("raw_adjusted", None)
+
+    return edges
+
+
+def get_calibrated_postmasters_edge_map(profile=None, ecosystem=None, conn=None):
+    """
+    Convenience function: returns calibrated post-masters edges as nested dict
+    edgeMap[source_id][target_id] = calibrated_probability.
+    """
+    edges = calibrate_postmasters_edges(profile=profile, ecosystem=ecosystem, conn=conn)
+    edge_map = defaultdict(dict)
+    for e in edges:
+        edge_map[e["source_id"]][e["target_id"]] = e["calibrated_probability"]
+    return dict(edge_map)

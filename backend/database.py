@@ -58,6 +58,27 @@ def create_database():
             gre_verbal_target INTEGER,
             gre_required TEXT DEFAULT 'not_required',
             initial_capital_usd INTEGER DEFAULT 0,
+            -- Post-graduation work visa
+            visa_type TEXT,
+            visa_duration_years REAL,
+            work_auth_certainty TEXT,
+            -- Program structure
+            stem_designation INTEGER DEFAULT 0,
+            part_time_available INTEGER DEFAULT 0,
+            online_hybrid_option INTEGER DEFAULT 0,
+            thesis_required INTEGER DEFAULT 0,
+            capstone_project INTEGER DEFAULT 1,
+            -- Placement data
+            employment_rate_6mo REAL,
+            median_time_to_offer_weeks INTEGER,
+            career_services_rating REAL,
+            -- Class/cohort metrics
+            avg_class_size INTEGER,
+            international_student_pct REAL,
+            pakistan_alumni_network INTEGER DEFAULT 0,
+            -- Family considerations
+            spouse_work_permit INTEGER DEFAULT 0,
+            dependent_visa_cost_usd INTEGER DEFAULT 0,
             FOREIGN KEY (university_id) REFERENCES universities(id)
         )
     """)
@@ -279,6 +300,113 @@ def create_database():
         )
     """)
 
+    # ─── Quality of Life & Immigration Tables ────────────────────────────────
+
+    # QoL metrics per city (extends living_costs with non-financial factors)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS qol_metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            city TEXT NOT NULL UNIQUE,
+            country TEXT NOT NULL,
+            -- Safety & stability
+            safety_index REAL,
+            political_stability_index REAL,
+            -- Climate
+            climate_type TEXT,
+            avg_winter_temp_c REAL,
+            avg_summer_temp_c REAL,
+            sunshine_hours_year INTEGER,
+            -- Community & lifestyle
+            halal_food_availability TEXT,
+            muslim_community_size TEXT,
+            public_transit_rating REAL,
+            healthcare_quality_rating REAL,
+            -- Work-life
+            avg_commute_minutes INTEGER,
+            work_life_balance_index REAL,
+            notes TEXT
+        )
+    """)
+
+    # Immigration policy per country (affecting career decisions)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS immigration_policy (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            country TEXT NOT NULL UNIQUE,
+            -- Student visa
+            student_visa_work_hours INTEGER,
+            student_visa_cost_usd INTEGER,
+            -- Post-study work
+            post_study_work_visa_name TEXT,
+            post_study_work_duration_months INTEGER,
+            post_study_work_extensions TEXT,
+            -- Work visa / permanent residence
+            work_visa_lottery INTEGER DEFAULT 0,
+            pr_pathway_years REAL,
+            pr_pathway_difficulty TEXT,
+            points_based_immigration INTEGER DEFAULT 0,
+            -- Family
+            spouse_open_work_permit INTEGER DEFAULT 0,
+            dependent_included_in_visa INTEGER DEFAULT 1,
+            -- Special programs
+            startup_visa_available INTEGER DEFAULT 0,
+            entrepreneur_pathway TEXT,
+            -- Pakistani-specific
+            pakistan_visa_processing_weeks INTEGER,
+            pakistan_acceptance_rate REAL,
+            last_updated DATE,
+            notes TEXT
+        )
+    """)
+
+    # Industry hubs per city (tech/industry presence for career opportunities)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS industry_hubs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            city TEXT NOT NULL,
+            industry TEXT NOT NULL,
+            hub_strength TEXT,
+            major_employers TEXT,
+            avg_tech_salary_usd INTEGER,
+            job_market_competitiveness TEXT,
+            remote_work_prevalence TEXT,
+            UNIQUE(city, industry)
+        )
+    """)
+
+    # Visa approval rates by nationality (Phase 3)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS visa_approval_by_nationality (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            country TEXT NOT NULL,
+            nationality TEXT NOT NULL,
+            visa_type TEXT NOT NULL,
+            approval_rate REAL,
+            avg_processing_weeks INTEGER,
+            denial_reasons TEXT,
+            tips TEXT,
+            last_updated DATE,
+            UNIQUE(country, nationality, visa_type)
+        )
+    """)
+
+    # Pakistan job market (Phase 4)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pakistan_job_market (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            employer_tier TEXT NOT NULL,
+            field TEXT NOT NULL,
+            degree_level TEXT NOT NULL,
+            city TEXT NOT NULL,
+            y1_salary_pkr INTEGER,
+            y5_salary_pkr INTEGER,
+            y10_salary_pkr INTEGER,
+            annual_growth_rate REAL,
+            notes TEXT,
+            UNIQUE(employer_tier, field, degree_level, city)
+        )
+    """)
+
     # Market mappings: primary_market string -> work location
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS market_mappings (
@@ -296,6 +424,80 @@ def create_database():
             region_keyword TEXT PRIMARY KEY,
             state_code TEXT NOT NULL,
             display_city TEXT NOT NULL
+        )
+    """)
+
+    # ─── Post-Masters Career Decision Tables ──────────────────────────────────
+
+    # Location ecosystems: startup/career ecosystem data by city
+    # Used to adjust post-masters path probabilities based on location
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS location_ecosystems (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            city TEXT NOT NULL,
+            country TEXT NOT NULL,
+            -- Startup ecosystem
+            startup_ecosystem_strength REAL DEFAULT 1.0,
+            vc_density TEXT,
+            startup_salary_discount REAL DEFAULT 0.7,
+            equity_multiple_median REAL DEFAULT 0.0,
+            -- Big tech presence
+            bigtech_presence TEXT,
+            bigtech_salary_premium REAL DEFAULT 1.0,
+            -- Remote work / arbitrage
+            remote_arbitrage_factor REAL DEFAULT 1.0,
+            -- Entrepreneur visas
+            entrepreneur_visa_available INTEGER DEFAULT 0,
+            entrepreneur_visa_type TEXT,
+            -- Talent density
+            tech_talent_density TEXT,
+            -- Metadata
+            notes TEXT,
+            UNIQUE(city, country)
+        )
+    """)
+
+    # Post-masters career nodes: career paths after completing masters
+    # Follows the same pattern as career_nodes but for post-graduation decisions
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS postmasters_nodes (
+            id TEXT PRIMARY KEY,
+            phase INTEGER NOT NULL,
+            node_type TEXT NOT NULL,
+            label TEXT NOT NULL,
+            -- Income modeling
+            salary_multiplier REAL DEFAULT 1.0,
+            equity_expected_value_usd INTEGER DEFAULT 0,
+            -- Probability and location requirements
+            base_probability REAL DEFAULT 0.0,
+            requires_location_type TEXT,
+            -- Living cost overrides (for remote/return paths)
+            living_cost_location TEXT,
+            tax_country TEXT,
+            -- Metadata
+            color TEXT,
+            note TEXT,
+            children TEXT
+        )
+    """)
+
+    # Post-masters edges: transitions between post-masters nodes
+    # Includes location sensitivity weights for probability adjustment
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS postmasters_edges (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            base_probability REAL NOT NULL,
+            -- Location sensitivity (multiplied by ecosystem factor)
+            startup_ecosystem_weight REAL DEFAULT 0.0,
+            bigtech_presence_weight REAL DEFAULT 0.0,
+            -- Link type for visualization
+            link_type TEXT NOT NULL DEFAULT 'child',
+            note TEXT,
+            UNIQUE(source_id, target_id, link_type),
+            FOREIGN KEY (source_id) REFERENCES postmasters_nodes(id),
+            FOREIGN KEY (target_id) REFERENCES postmasters_nodes(id)
         )
     """)
 
@@ -370,6 +572,52 @@ def create_database():
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_scholarships_relevance ON scholarships(relevance_score)"
     )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_qol_metrics_city ON qol_metrics(city)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_qol_metrics_country ON qol_metrics(country)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_immigration_policy_country ON immigration_policy(country)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_industry_hubs_city ON industry_hubs(city)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_industry_hubs_industry ON industry_hubs(industry)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_visa_approval_country ON visa_approval_by_nationality(country)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_visa_approval_nationality ON visa_approval_by_nationality(nationality)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pakistan_job_market_tier ON pakistan_job_market(employer_tier)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pakistan_job_market_field ON pakistan_job_market(field)"
+    )
+    # Post-masters tables indexes
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_location_ecosystems_city ON location_ecosystems(city)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_location_ecosystems_country ON location_ecosystems(country)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_postmasters_nodes_phase ON postmasters_nodes(phase)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_postmasters_nodes_type ON postmasters_nodes(node_type)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_postmasters_edges_source ON postmasters_edges(source_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_postmasters_edges_target ON postmasters_edges(target_id)"
+    )
 
     conn.commit()
     conn.close()
@@ -377,5 +625,69 @@ def create_database():
     logger.info("Database created at: %s", DB_PATH)
 
 
+def migrate_database():
+    """Run database migrations to add new columns to existing tables."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # Get existing columns in programs table
+    cursor.execute("PRAGMA table_info(programs)")
+    existing_cols = {row[1] for row in cursor.fetchall()}
+
+    # New columns to add to programs table
+    new_program_columns = [
+        ("visa_type", "TEXT"),
+        ("visa_duration_years", "REAL"),
+        ("work_auth_certainty", "TEXT"),
+        ("stem_designation", "INTEGER DEFAULT 0"),
+        ("part_time_available", "INTEGER DEFAULT 0"),
+        ("online_hybrid_option", "INTEGER DEFAULT 0"),
+        ("thesis_required", "INTEGER DEFAULT 0"),
+        ("capstone_project", "INTEGER DEFAULT 1"),
+        ("employment_rate_6mo", "REAL"),
+        ("median_time_to_offer_weeks", "INTEGER"),
+        ("career_services_rating", "REAL"),
+        ("avg_class_size", "INTEGER"),
+        ("international_student_pct", "REAL"),
+        ("pakistan_alumni_network", "INTEGER DEFAULT 0"),
+        ("spouse_work_permit", "INTEGER DEFAULT 0"),
+        ("dependent_visa_cost_usd", "INTEGER DEFAULT 0"),
+        # GRE/IELTS requirements (Phase 1)
+        ("gre_waiver_conditions", "TEXT"),
+        ("ielts_min_score", "REAL"),
+        ("toefl_min_score", "INTEGER"),
+        ("english_waiver_available", "INTEGER DEFAULT 0"),
+    ]
+
+    for col_name, col_type in new_program_columns:
+        if col_name not in existing_cols:
+            try:
+                cursor.execute(f"ALTER TABLE programs ADD COLUMN {col_name} {col_type}")
+                logger.info("Added column %s to programs table", col_name)
+            except sqlite3.OperationalError as e:
+                logger.warning("Could not add column %s: %s", col_name, e)
+
+    # Add deadline column to scholarships table if not exists
+    cursor.execute("PRAGMA table_info(scholarships)")
+    scholarship_cols = {row[1] for row in cursor.fetchall()}
+
+    scholarship_new_cols = [
+        ("deadline_date", "DATE"),
+    ]
+
+    for col_name, col_type in scholarship_new_cols:
+        if col_name not in scholarship_cols:
+            try:
+                cursor.execute(f"ALTER TABLE scholarships ADD COLUMN {col_name} {col_type}")
+                logger.info("Added column %s to scholarships table", col_name)
+            except sqlite3.OperationalError as e:
+                logger.warning("Could not add column %s: %s", col_name, e)
+
+    conn.commit()
+    conn.close()
+    logger.info("Database migration completed")
+
+
 if __name__ == "__main__":
     create_database()
+    migrate_database()

@@ -140,3 +140,82 @@ baseline_high = 3.7
 high_promoted = 1.10        # slight promotion boost
 # Low GPA (<= 2.5) effects
 low_promoted = 0.90         # slight promotion suppress
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# POST-MASTERS CAREER PATH CALIBRATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Location Ecosystem Multipliers ─────────────────────────────────────────
+# Applied to post-masters edges based on work location
+[pm_location]
+# Startup ecosystem multipliers (delta from 1.0 baseline)
+# These are applied as: adjusted_P = base_P * (1 + weight * delta)
+# where delta = ecosystem_strength - 1.0
+startup_sf = 0.8            # SF: 1.8 strength → +80% delta
+startup_nyc = 0.5           # NYC: 1.5 → +50%
+startup_seattle = 0.4       # Seattle: 1.4 → +40%
+startup_london = 0.3        # London: 1.3 → +30%
+startup_toronto = 0.1       # Toronto: 1.1 → +10%
+startup_berlin = 0.1        # Berlin: 1.1 → +10%
+startup_singapore = 0.2     # Singapore: 1.2 → +20%
+startup_munich = -0.1       # Munich: 0.9 → -10%
+startup_karlsruhe = -0.4    # Karlsruhe: 0.6 → -40%
+startup_lahore = -0.6       # Lahore: 0.4 → -60%
+
+# Big tech presence multipliers
+# Applied as: adjusted_P = base_P * bigtech_modifier
+bigtech_hq_city = 1.40      # HQ cities (SF, Seattle)
+bigtech_major_office = 1.20 # Major eng office
+bigtech_minor = 0.80        # Small/support office
+bigtech_none = 0.50         # No presence
+
+# VC density impact on funding probability
+vc_very_high = 1.30         # SF, NYC
+vc_high = 1.15              # Seattle, Boston, London
+vc_medium = 1.00            # Berlin, Austin, Toronto
+vc_low = 0.75               # Most other cities
+
+# ─── Profile-Based Multipliers for Post-Masters Paths ───────────────────────
+[pm_profile]
+# Risk tolerance affects founder paths
+high_risk_founder_boost = 1.50       # High risk → founder path boosted
+high_risk_startup_join = 1.25        # High risk → startup employee boosted
+low_risk_founder_suppress = 0.40     # Low risk → founder suppressed
+low_risk_bigtech_boost = 1.20        # Low risk → stable bigtech boosted
+
+# Experience affects founder success
+yoe_5plus_founder_success = 1.30     # 5+ years → better founder odds
+yoe_3plus_founder_success = 1.15     # 3-4 years → mild boost
+yoe_1minus_founder_success = 0.70    # <1 year → founder suppressed
+
+# Savings affects founder feasibility (need runway)
+savings_30k_founder_boost = 1.30     # $30K+ → can bootstrap
+savings_15k_founder_boost = 1.15     # $15K+ → mild boost
+savings_5k_founder_suppress = 0.60   # <$5K → founding very risky
+savings_2k_founder_suppress = 0.30   # <$2K → founding impractical
+
+# Performance affects bigtech advancement
+top_bigtech_staff = 1.35             # Top performer → staff track boost
+top_bigtech_manager = 1.25           # Top performer → management boost
+avg_bigtech_plateau = 1.30           # Average → more likely plateau
+below_bigtech_plateau = 1.50         # Below avg → most likely plateau
+
+# English affects remote success
+native_remote_boost = 1.25           # Native → remote boost
+intermediate_remote_suppress = 0.65  # Intermediate → remote suppressed
+basic_remote_suppress = 0.35         # Basic → remote very hard
+
+# Side projects affect startup traction
+side_projects_startup_success = 1.30 # Has projects → startup boost
+side_projects_startup_funding = 1.25 # Has projects → funding boost
+
+# Publications affect AI/ML startup success
+publications_ai_startup = 1.20       # Has pubs → AI startup boost
+
+# ─── Return to Pakistan Modifiers ───────────────────────────────────────────
+[pm_pakistan_return]
+# Multipliers for return path probabilities based on profile
+high_savings_remote_usd = 1.20       # High savings → can wait for remote job
+low_savings_local_senior = 1.30      # Low savings → need immediate income
+has_network_startup = 1.25           # Has PK network → startup easier
+ms_credential_senior_boost = 1.40    # MS from top school → instant credibility
